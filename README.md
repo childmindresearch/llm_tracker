@@ -1,59 +1,258 @@
-[![DOI](https://zenodo.org/badge/657341621.svg)](https://zenodo.org/doi/10.5281/zenodo.10383685)
+# Pychometrics
 
-# CMI-DAIR Template Python Repository
+A Python package for identifying psychological constructs in text using Large Language Models (LLMs).
 
-Welcome to the CMI-DAIR Template Python Repository! This template is designed to streamline your project setup and ensure a consistent structure. To get started, follow these steps:
+## Overview
 
-- [ ] Run `setup_template.py` to initialize the repository.
-- [ ] Replace the content of this `README.md` with details specific to your project.
-- [ ] Install the `pre-commit` hooks to ensure code quality on each commit.
-- [ ] Revise SECURITY.md to reflect supported versions or remove it if not applicable.
-- [ ] Remove the placeholder src and test files, these are there merely to show how the CI works.
-- [ ] If it hasn't already been done for your organization/acccount, grant third-party app permissions for CodeCov.
-- [ ] To set up an API documentation website, go to the `Settings` tab of your repository, scroll down to the `GitHub Pages` section, and select `GitHub Actions` as the source. This will generate a link to your API docs.
-- [ ] Update stability badge in `README.md` to reflect the current state of the project. A list of stability badges to copy can be found [here](https://github.com/orangemug/stability-badges). The [node documentation](https://nodejs.org/docs/latest-v20.x/api/documentation.html#documentation_stability_index) can be used as a reference for the stability levels.
-
-# Project name
-
-[![Build](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/childmindresearch/template-python-repository/branch/main/graph/badge.svg?token=22HWWFWPW5)](https://codecov.io/gh/childmindresearch/template-python-repository)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-![stability-stable](https://img.shields.io/badge/stability-stable-green.svg)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/childmindresearch/template-python-repository/blob/main/LICENSE)
-[![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/template-python-repository)
-
-What problem does this tool solve?
+Pychometrics analyzes interview transcripts and other text documents to identify instances of psychological constructs defined in a codebook. It uses LLM-based analysis via OpenRouter to extract quotes, assign confidence scores, and track speaker information.
 
 ## Features
 
-- A few
-- Cool
-- Things
+- **Codebook-driven analysis**: Define constructs with names, definitions, and examples
+- **Batch processing**: Analyze entire directories of documents
+- **Flexible input**: Supports CSV and TXT interview files
+- **Structured output**: JSON files with construct instances, quotes, and confidence scores
+- **Metadata tracking**: Saves API response metadata for reproducibility
+- **Custom prompts**: Override default prompts for specialized analysis
+- **Error handling**: Automatic retry with failure logging
 
 ## Installation
 
-Install this package via :
+```bash
+# Using pip
+pip install pychometrics
 
-```sh
-pip install APP_NAME
+# Using Poetry (for development)
+git clone https://github.com/your-org/pychometrics.git
+cd pychometrics
+poetry install
 ```
 
-Or get the newest development version via:
+## Quick Start
 
-```sh
-pip install git+https://github.com/childmindresearch/template-python-repository
+### Python API
+
+```python
+from pychometrics import PychometricsAnalyzer
+
+# Initialize the analyzer
+analyzer = PychometricsAnalyzer(
+    api_key="your-openrouter-api-key",
+    model_name="anthropic/claude-3.5-sonnet"
+)
+
+# Run analysis
+results, metadata = analyzer.analyze_directory(
+    input_dir="./interviews",
+    codebook_path="./codebook.json",
+    output_dir="./results"  # Optional
+)
+
+# Results are returned as dict of dicts (one per document)
+for doc_id, constructs in results.items():
+    print(f"Document: {doc_id}")
+    for instance in constructs.get("instances", []):
+        print(f"  - {instance['construct']}: {instance['quote']}")
 ```
 
-## Quick start
+### Command Line Interface
 
-Short tutorial, maybe with a
+```bash
+# Basic usage
+pychometrics analyze ./interviews ./codebook.json \
+    --api-key YOUR_API_KEY \
+    --model anthropic/claude-3.5-sonnet
 
-```Python
-import APP_NAME
+# With custom output directory
+pychometrics analyze ./interviews ./codebook.json \
+    --api-key YOUR_API_KEY \
+    --model anthropic/claude-3.5-sonnet \
+    --output-dir my_analysis_results
 
-APP_NAME.short_example()
+# Using environment variable for API key
+export OPENROUTER_API_KEY=your_key
+pychometrics analyze ./interviews ./codebook.json \
+    --model anthropic/claude-3.5-sonnet
+
+# With custom prompt
+pychometrics analyze ./interviews ./codebook.json \
+    --api-key YOUR_API_KEY \
+    --model anthropic/claude-3.5-sonnet \
+    --prompt-file custom_prompt.txt
 ```
 
-## Links or References
+## Codebook Format
 
-- [https://www.wikipedia.de](https://www.wikipedia.de)
+The codebook is a JSON file defining the psychological constructs to identify:
+
+```json
+{
+    "constructs": [
+        {
+            "name": "Self-Efficacy",
+            "definition": "An individual's belief in their capacity to execute behaviors necessary to produce specific performance attainments.",
+            "examples": [
+                "I believe I can handle difficult situations",
+                "I'm confident in my ability to solve problems"
+            ]
+        },
+        {
+            "name": "Growth Mindset",
+            "definition": "The belief that abilities and intelligence can be developed through dedication and hard work.",
+            "examples": [
+                "I can improve with practice",
+                "Challenges help me grow"
+            ]
+        }
+    ]
+}
+```
+
+## Input Document Formats
+
+### TXT Files
+
+Plain text interview transcripts. Speaker identification can be indicated with prefixes:
+
+```
+Interviewer: How do you feel about learning new skills?
+Participant: I believe that with enough practice, I can learn anything.
+Interviewer: Can you give me an example?
+Participant: Well, when I started my job, I didn't know Excel at all...
+```
+
+### CSV Files
+
+CSV files should have columns for the interview content. Common formats include:
+- Single column: Just the transcript text
+- Multiple columns: Speaker, Text, Timestamp, etc.
+
+The package will extract and concatenate text content appropriately.
+
+## Output Structure
+
+```
+my_analysis_2024-01-15_143022/
+├── README.md              # Analysis metadata
+├── encodings/             # One JSON per document
+│   ├── interview_001.json
+│   ├── interview_002.json
+│   └── ...
+└── metadata/              # API response metadata
+    ├── interview_001_meta.json
+    ├── interview_002_meta.json
+    └── ...
+```
+
+### Output JSON Format
+
+Each document produces a JSON file with the following structure:
+
+```json
+{
+    "document_id": "interview_001",
+    "instances": [
+        {
+            "construct": "Self-Efficacy",
+            "speaker_id": "Participant",
+            "quote": "I believe that with enough practice, I can learn anything",
+            "confidence": 2
+        },
+        {
+            "construct": "Growth Mindset",
+            "speaker_id": "Participant",
+            "quote": "when I started my job, I didn't know Excel at all, but now I'm quite proficient",
+            "confidence": 2
+        }
+    ]
+}
+```
+
+### Confidence Scores
+
+- **0**: Construct is not mentioned or is negated
+- **1**: Indirect mention or unclear reference
+- **2**: Clear and prototypical mention of the construct
+
+## Configuration
+
+### Environment Variables
+
+- `OPENROUTER_API_KEY`: Your OpenRouter API key
+- `PYCHOMETRICS_MODEL`: Default model to use
+
+### Custom Prompts
+
+Create a custom prompt file with placeholders:
+
+```
+{text}      - Will be replaced with the document text
+{codebook}  - Will be replaced with the codebook content
+```
+
+## API Reference
+
+### PychometricsAnalyzer
+
+```python
+class PychometricsAnalyzer:
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "anthropic/claude-3.5-sonnet",
+        custom_prompt: Optional[str] = None
+    ):
+        """Initialize the analyzer.
+        
+        Args:
+            api_key: OpenRouter API key
+            model_name: Model identifier for OpenRouter
+            custom_prompt: Optional custom prompt template
+        """
+    
+    def analyze_document(
+        self,
+        document_path: Path,
+        codebook: dict
+    ) -> Tuple[dict, dict]:
+        """Analyze a single document.
+        
+        Args:
+            document_path: Path to the document file
+            codebook: Parsed codebook dictionary
+            
+        Returns:
+            Tuple of (analysis_result, api_metadata)
+        """
+    
+    def analyze_directory(
+        self,
+        input_dir: str | Path,
+        codebook_path: str | Path,
+        output_dir: Optional[str | Path] = None
+    ) -> Tuple[Dict[str, dict], Dict[str, dict]]:
+        """Analyze all documents in a directory.
+        
+        Args:
+            input_dir: Directory containing documents
+            codebook_path: Path to codebook JSON
+            output_dir: Optional output directory name prefix
+            
+        Returns:
+            Tuple of (results_dict, metadata_dict)
+        """
+```
+
+## Error Handling
+
+- Failed API calls are retried once automatically
+- Documents that fail after retry are logged in the output README
+- The analysis continues with remaining documents
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
