@@ -93,7 +93,6 @@ def load_csv_document(file_path: Path) -> str:
     """
     try:
         with open(file_path, "r", encoding="utf-8", newline="") as f:
-            # Try to detect the dialect
             sample = f.read(8192)
             f.seek(0)
 
@@ -107,18 +106,15 @@ def load_csv_document(file_path: Path) -> str:
             if not reader.fieldnames:
                 raise FileLoadError("CSV file has no headers")
 
-            # Identify text and speaker columns
             text_columns = []
             speaker_column = None
             fieldnames_lower = {fn.lower(): fn for fn in reader.fieldnames}
 
-            # Priority text column names
             text_priority = ["text", "content", "transcript", "response", "answer"]
             for col_name in text_priority:
                 if col_name in fieldnames_lower:
                     text_columns.append(fieldnames_lower[col_name])
 
-            # If no priority columns found, use all columns that aren't speaker-like
             if not text_columns:
                 speaker_keywords = [
                     "speaker",
@@ -133,23 +129,19 @@ def load_csv_document(file_path: Path) -> str:
                     if not any(kw in fn.lower() for kw in speaker_keywords)
                 ]
 
-            # Find speaker column
             speaker_keywords = ["speaker", "participant", "interviewer", "name"]
             for kw in speaker_keywords:
                 if kw in fieldnames_lower:
                     speaker_column = fieldnames_lower[kw]
                     break
 
-            # Build the text output
             lines = []
             for row in reader:
                 line_parts = []
 
-                # Add speaker prefix if available
                 if speaker_column and row.get(speaker_column):
                     line_parts.append(f"{row[speaker_column]}:")
 
-                # Add text content
                 for col in text_columns:
                     if col in row and row[col]:
                         line_parts.append(str(row[col]).strip())

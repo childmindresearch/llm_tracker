@@ -6,7 +6,6 @@ handling retries.
 """
 
 import json
-import re
 import time
 from typing import Any, Optional
 
@@ -116,13 +115,11 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
 
     response_data = response.json()
 
-    # Extract the response text
     try:
         response_text = response_data["choices"][0]["message"]["content"]
     except (KeyError, IndexError) as e:
         raise PromptingError(f"Unexpected API response format: {e}") from e
 
-    # Build metadata
     metadata = APIMetadata(
         model=response_data.get("model"),
         usage=response_data.get("usage"),
@@ -173,7 +170,6 @@ def prompt_for_constructs(
         except (PromptingError, ResponseParseError) as e:
             last_error = e
             if attempts < max_attempts:
-                # Brief pause before retry
                 time.sleep(1)
                 continue
             else:
@@ -182,5 +178,4 @@ def prompt_for_constructs(
                     f"'{document_id}'. Last error: {e}"
                 ) from e
 
-    # This should not be reached, but just in case
     raise PromptingError(f"Unexpected failure for document '{document_id}'")
