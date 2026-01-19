@@ -31,15 +31,7 @@ class PychometricsAnalyzer:
     Attributes:
         config: Configuration for the analyzer including API settings.
 
-    Example:
-        >>> analyzer = PychometricsAnalyzer(
-        ...     api_key="your-api-key",
-        ...     model_name="anthropic/claude-3.5-sonnet"
-        ... )
-        >>> results, metadata = analyzer.analyze_directory(
-        ...     input_dir="./interviews",
-        ...     codebook_path="./codebook.json"
-        ... )
+
     """
 
     def __init__(
