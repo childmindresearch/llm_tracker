@@ -2,7 +2,7 @@
 
 ## Analysis Information
 
-- **Date**: 2026-01-20 03:31:48
+- **Date**: 2026-01-21 10:23:52
 - **Model Used**: anthropic/claude-3.5-sonnet
 - **Codebook**: psychedelic_codebook.json
 - **Input Directory**: sample_interviews

@@ -41,6 +41,7 @@ Important:
 - Ensure all quotes are properly escaped for JSON
 - Include ALL instances found for ALL constructs
 - Use null (not "null" or "N/A") for missing speaker_id
+- Quotes MUST be copied EXACTLY from the text, character-for-character. Do not change capitalization, punctuation, ellipses (… vs ...), or any other characters.
 
 Your response:"""
 
