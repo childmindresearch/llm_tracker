@@ -1,8 +1,4 @@
-"""File handling utilities for pychometrics.
-
-This module provides functions for loading documents (CSV, TXT) and
-codebooks (JSON), as well as saving analysis results and metadata.
-"""
+"""File handling utilities for pychometrics."""
 
 import csv
 import json

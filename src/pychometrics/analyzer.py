@@ -1,8 +1,4 @@
-"""Main analyzer module for pychometrics.
-
-This module provides the PychometricsAnalyzer class, which orchestrates
-the complete analysis workflow from loading documents to saving results.
-"""
+"""Main analyzer module for pychometrics."""
 
 from pathlib import Path
 from typing import Optional
@@ -67,7 +63,7 @@ class PychometricsAnalyzer:
             self.config = AnalyzerConfig(**kwargs)
 
     def analyze_document(
-        self, document_path: Path | str, codebook: dict
+        self, document_path: Path | str, codebook: dict, threshold: float = 0.85
     ) -> tuple[AnalysisResult, APIMetadata]:
         """Analyze a single document for psychological constructs.
 
@@ -85,7 +81,11 @@ class PychometricsAnalyzer:
         text, document_id = load_document(document_path)
 
         result, metadata = prompt_for_constructs(
-            text=text, codebook=codebook, document_id=document_id, config=self.config
+            text=text,
+            codebook=codebook,
+            document_id=document_id,
+            config=self.config,
+            threshold=threshold,
         )
 
         return result, metadata
@@ -95,6 +95,7 @@ class PychometricsAnalyzer:
         input_dir: Path | str,
         codebook_path: Path | str,
         output_dir: Optional[str] = None,
+        threshold: float = 0.85,
     ) -> tuple[dict[str, dict], dict[str, dict]]:
         """Analyze all documents in a directory.
 
@@ -107,6 +108,7 @@ class PychometricsAnalyzer:
             codebook_path: Path to the codebook JSON file.
             output_dir: Optional name for the output directory. A timestamp
                 will be appended automatically.
+            threshold:
 
         Returns:
             Tuple of two dictionaries:
@@ -138,7 +140,9 @@ class PychometricsAnalyzer:
             print(f"Processing [{i}/{total_documents}]: {document_name}")
 
             try:
-                result, metadata = self.analyze_document(doc_path, codebook)
+                result, metadata = self.analyze_document(
+                    doc_path, codebook, threshold=threshold
+                )
 
                 save_analysis_result(result, output_path)
                 save_metadata(metadata, result.document_id, output_path)
