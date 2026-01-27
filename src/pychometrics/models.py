@@ -105,3 +105,21 @@ class APIMetadata(BaseModel):
     response_id: Optional[str] = None
     latency_ms: Optional[float] = None
     raw_response: Optional[dict] = None
+
+
+class ErrorRecord(BaseModel):
+    """Record of a failed document processing attempt.
+
+    Attributes:
+        document_id: Identifier for the document.
+        document_path: Path to the original document.
+        error_message: Description of the error.
+        model_used: Model that was attempted.
+        timestamp: When the error occurred.
+    """
+
+    document_id: str
+    document_path: str
+    error_message: str
+    model_used: str = ""
+    timestamp: Optional[str] = None
