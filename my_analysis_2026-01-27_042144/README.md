@@ -2,20 +2,22 @@
 
 ## Analysis Information
 
-- **Date**: 2026-01-21 10:23:52
-- **Model Used**: anthropic/claude-3.5-sonnet
+- **Date**: 2026-01-27 04:23:19
+- **Model Used**: google/gemma-3n-e2b-it:free
 - **Codebook**: psychedelic_codebook.json
 - **Input Directory**: sample_interviews
 
 ## Processing Summary
 
 - **Total Documents**: 3
-- **Successful**: 3
-- **Failed**: 0
+- **Successful**: 2
+- **Failed**: 1
 
-## Status
+## Failed Documents
 
-All documents processed successfully.
+The following documents failed to process after retry:
+
+- s29_integration1
 
 ## Output Structure
 
