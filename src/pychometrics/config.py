@@ -1,8 +1,4 @@
-"""Configuration and constants for pychometrics package.
-
-This module contains the default prompt template, configuration class,
-and other constants used throughout the package.
-"""
+"""Configuration and constants for pychometrics package."""
 
 import os
 from dataclasses import dataclass, field
@@ -45,6 +41,7 @@ Important:
 - Ensure all quotes are properly escaped for JSON
 - Include ALL instances found for ALL constructs
 - Use null (not "null" or "N/A") for missing speaker_id
+- Quotes MUST be copied EXACTLY from the text, character-for-character. Do not change capitalization, punctuation, ellipses (… vs ...), or any other characters.
 
 Your response:"""
 
@@ -58,7 +55,7 @@ REQUEST_TIMEOUT = 120.0
 @dataclass
 class AnalyzerConfig:
     """Configuration for the PychometricsAnalyzer.
-    
+
     Attributes:
         api_key: OpenRouter API key. If not provided, reads from
             OPENROUTER_API_KEY environment variable.
@@ -69,29 +66,29 @@ class AnalyzerConfig:
         timeout: Request timeout in seconds.
         base_url: Base URL for the API endpoint.
     """
-    
+
     api_key: Optional[str] = None
     model_name: str = DEFAULT_MODEL
     custom_prompt: Optional[str] = None
     max_retries: int = MAX_RETRIES
     timeout: float = REQUEST_TIMEOUT
     base_url: str = OPENROUTER_BASE_URL
-    
+
     def __post_init__(self) -> None:
         """Validate configuration and set defaults from environment."""
         if self.api_key is None:
             self.api_key = os.environ.get("OPENROUTER_API_KEY")
-        
+
         if self.api_key is None:
             raise ValueError(
                 "API key is required. Provide via api_key parameter or "
                 "set OPENROUTER_API_KEY environment variable."
             )
-    
+
     @property
     def prompt_template(self) -> str:
         """Get the prompt template to use.
-        
+
         Returns:
             The custom prompt if provided, otherwise the default prompt.
         """
