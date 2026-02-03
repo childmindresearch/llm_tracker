@@ -85,6 +85,8 @@ class PychometricsAnalyzer:
         errors: list[ErrorRecord] = []
 
         total_documents = len(document_files)
+        success_count = 0
+        error_count = 0
 
         for i, doc_path in enumerate(document_files, 1):
             document_name = doc_path.name
@@ -99,6 +101,7 @@ class PychometricsAnalyzer:
                 results_dict[result.document_id] = result.to_dict()
                 metadata_dict[result.document_id] = metadata.model_dump()
 
+                success_count += 1
                 print(f"  ✓ Found {len(result.instances)} construct instances")
 
             except (FileLoadError, PromptingError) as e:
@@ -113,7 +116,14 @@ class PychometricsAnalyzer:
                 )
                 save_error_record(error, output_path)
                 errors.append(error)
+                error_count += 1
                 continue
+            finally:
+                print(
+                    "  Progress: "
+                    f"Successful {success_count}/{total_documents}; "
+                    f"Errors {error_count}/{total_documents}"
+                )
 
         save_readme(
             output_dir=output_path,

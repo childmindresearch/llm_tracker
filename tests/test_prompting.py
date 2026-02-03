@@ -92,8 +92,22 @@ def test_invalid_json_raises_error() -> None:
     """Test that invalid JSON raises error."""
     response = "This is not valid JSON at all"
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(ResponseParseError):
         parse_llm_response(response, "bad_doc")
+
+
+def test_json_with_extra_text() -> None:
+    """Parse JSON embedded in extra text."""
+    response = """
+    Some preamble text.
+    {"instances": [{"construct": "A", "quote": "q", "confidence": 2}]}
+    Some trailing text.
+    """
+
+    result = parse_llm_response(response, "doc_extra")
+
+    assert len(result.instances) == 1
+    assert result.instances[0].construct == "A"
 
 
 def test_malformed_instance_skipped() -> None:
