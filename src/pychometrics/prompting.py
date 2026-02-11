@@ -19,7 +19,9 @@ from pychometrics.models import APIMetadata, AnalysisResult, ConstructInstance
 class PromptingError(Exception):
     """Exception raised when prompting fails after all retries."""
 
-    pass
+    def __init__(self, message: str, metadata: Optional[APIMetadata] = None) -> None:
+        super().__init__(message)
+        self.metadata = metadata
 
 
 class ResponseParseError(Exception):
@@ -173,7 +175,7 @@ def parse_llm_response(
     document_id: str,
     original_text: str = "",
     threshold: float = 0.85,
-) -> AnalysisResult:
+) -> tuple[AnalysisResult, bool]:
     """Parse the LLM response into an AnalysisResult.
 
     Args:
@@ -185,7 +187,7 @@ def parse_llm_response(
     Returns:
         Parsed AnalysisResult object.
     """
-    data, _was_repaired = validate_llm_output(response_text)
+    data, was_repaired = validate_llm_output(response_text)
 
     instances = []
     raw_instances = data.get("instances", [])
@@ -210,7 +212,7 @@ def parse_llm_response(
         except (ValueError, TypeError):
             continue
 
-    return AnalysisResult(document_id=document_id, instances=instances)
+    return AnalysisResult(document_id=document_id, instances=instances), was_repaired
 
 
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
@@ -281,23 +283,46 @@ def prompt_for_constructs(
 
     attempts = 0
     max_attempts = config.max_retries + 1
+    last_metadata: Optional[APIMetadata] = None
 
     while attempts < max_attempts:
         attempts += 1
 
         try:
             response_text, metadata = call_llm_api(prompt, config)
-            result = parse_llm_response(response_text, document_id, text, threshold)
+            last_metadata = metadata
+            result, was_repaired = parse_llm_response(
+                response_text, document_id, text, threshold
+            )
+            metadata.num_retries = attempts - 1
+            metadata.output_repaired = was_repaired
             return result, metadata
 
         except (PromptingError, ResponseParseError) as e:
+            if last_metadata is not None:
+                last_metadata.num_retries = attempts - 1
             if attempts < max_attempts:
                 time.sleep(1)
                 continue
             else:
+                if last_metadata is None:
+                    error_metadata = APIMetadata(
+                        model=config.model_name,
+                        num_retries=attempts - 1,
+                        error_message=str(e),
+                        error_type=type(e).__name__,
+                        error_output=str(e),
+                    )
+                else:
+                    last_metadata.error_message = str(e)
+                    last_metadata.error_type = type(e).__name__
+                    last_metadata.error_output = str(e)
+                    error_metadata = last_metadata
+
                 raise PromptingError(
                     f"Failed after {max_attempts} attempts for document "
-                    f"'{document_id}'. Last error: {e}"
+                    f"'{document_id}'. Last error: {e}",
+                    metadata=error_metadata,
                 ) from e
 
     raise PromptingError(f"Unexpected failure for document '{document_id}'")

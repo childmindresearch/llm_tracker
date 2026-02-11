@@ -105,6 +105,11 @@ class APIMetadata(BaseModel):
     response_id: Optional[str] = None
     latency_ms: Optional[float] = None
     raw_response: Optional[dict] = None
+    num_retries: int = 0
+    output_repaired: Optional[bool] = None
+    error_message: Optional[str] = None
+    error_type: Optional[str] = None
+    error_output: Optional[str] = None
 
 
 class ErrorRecord(BaseModel):

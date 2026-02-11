@@ -115,6 +115,17 @@ class PychometricsAnalyzer:
                     timestamp=datetime.now().isoformat(),
                 )
                 save_error_record(error, output_path)
+                if isinstance(e, PromptingError) and e.metadata is not None:
+                    save_metadata(e.metadata, doc_path.stem, output_path)
+                else:
+                    error_metadata = APIMetadata(
+                        model=self.config.model_name,
+                        num_retries=self.config.max_retries,
+                        error_message=str(e),
+                        error_type=type(e).__name__,
+                        error_output=str(e),
+                    )
+                    save_metadata(error_metadata, doc_path.stem, output_path)
                 errors.append(error)
                 error_count += 1
                 continue
