@@ -5,8 +5,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import pychometrics.models
 
-from pychometrics.models import AnalysisResult, APIMetadata, Codebook
+from pychometrics.models import AnalysisResult, APIMetadata, Codebook, ErrorRecord
 
 
 class FileLoadError(Exception):
@@ -228,6 +229,7 @@ def create_output_directory(
     Creates a directory with timestamp in the name containing:
     - encodings/ subdirectory for JSON results
     - metadata/ subdirectory for API metadata
+    - errors/ subdirectory for failed documents
 
     Args:
         output_name: Optional name prefix for the output directory.
@@ -251,6 +253,7 @@ def create_output_directory(
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "encodings").mkdir(exist_ok=True)
     (output_dir / "metadata").mkdir(exist_ok=True)
+    (output_dir / "errors").mkdir(exist_ok=True)
 
     return output_dir
 
@@ -357,3 +360,36 @@ All documents processed successfully.
         f.write(content)
 
     return readme_path
+
+
+def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
+    """Save an error record to the errors directory."""
+    from pychometrics.models import ErrorRecord
+
+    errors_dir = output_dir / "errors"
+    errors_dir.mkdir(exist_ok=True)
+
+    file_path = errors_dir / f"{error.document_id}_error.json"
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(error.model_dump(), f, indent=2, ensure_ascii=False)
+
+    return file_path
+
+
+def load_error_records(output_dir: Path) -> list[ErrorRecord]:
+    """Load all error records from an output directory."""
+    from pychometrics.models import ErrorRecord
+
+    errors_dir = output_dir / "errors"
+
+    if not errors_dir.exists():
+        return []
+
+    errors = []
+    for error_file in errors_dir.glob("*_error.json"):
+        with open(error_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            errors.append(ErrorRecord(**data))
+
+    return errors

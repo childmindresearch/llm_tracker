@@ -19,13 +19,106 @@ from pychometrics.models import APIMetadata, AnalysisResult, ConstructInstance
 class PromptingError(Exception):
     """Exception raised when prompting fails after all retries."""
 
-    pass
+    def __init__(self, message: str, metadata: Optional[APIMetadata] = None) -> None:
+        super().__init__(message)
+        self.metadata = metadata
 
 
 class ResponseParseError(Exception):
     """Exception raised when response cannot be parsed as valid JSON."""
 
     pass
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove surrounding markdown code fences when present."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        if first_newline != -1:
+            cleaned = cleaned[first_newline + 1 :]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
+def _extract_first_json_object(text: str) -> Optional[str]:
+    """Extract the first JSON object from text using brace matching."""
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : idx + 1]
+
+    return None
+
+
+def validate_llm_output(response_text: str) -> tuple[dict, bool]:
+    """Validate and minimally repair LLM output into the expected JSON shape.
+
+    Returns:
+        Tuple of (parsed_data, was_repaired).
+    """
+    if response_text is None:
+        raise ResponseParseError("Response text is empty.")
+
+    cleaned = _strip_code_fences(response_text)
+    was_repaired = cleaned != response_text.strip()
+
+    try:
+        data: Any = json.loads(cleaned)
+    except json.JSONDecodeError:
+        extracted = _extract_first_json_object(cleaned) or _extract_first_json_object(
+            response_text
+        )
+        if not extracted:
+            raise ResponseParseError("No valid JSON object found in response.")
+        was_repaired = True
+        try:
+            data = json.loads(extracted)
+        except json.JSONDecodeError as e:
+            raise ResponseParseError(f"Invalid JSON after extraction: {e}") from e
+
+    if isinstance(data, list):
+        repaired = False
+        for item in data:
+            if isinstance(item, dict) and "instances" in item:
+                data = item
+                repaired = True
+                break
+        if repaired:
+            was_repaired = True
+        else:
+            raise ResponseParseError("Top-level JSON is a list without instances.")
+
+    if not isinstance(data, dict):
+        raise ResponseParseError("Top-level JSON must be an object.")
+
+    if "instances" not in data or not isinstance(data["instances"], list):
+        raise ResponseParseError('JSON must contain an "instances" list.')
+
+    return data, was_repaired
 
 
 def construct_prompt(text: str, codebook: dict, template: str) -> str:
@@ -82,7 +175,7 @@ def parse_llm_response(
     document_id: str,
     original_text: str = "",
     threshold: float = 0.85,
-) -> AnalysisResult:
+) -> tuple[AnalysisResult, bool]:
     """Parse the LLM response into an AnalysisResult.
 
     Args:
@@ -94,19 +187,7 @@ def parse_llm_response(
     Returns:
         Parsed AnalysisResult object.
     """
-    cleaned = response_text.strip()
-
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-
-    cleaned = cleaned.strip()
-
-    data = json.loads(cleaned)
+    data, was_repaired = validate_llm_output(response_text)
 
     instances = []
     raw_instances = data.get("instances", [])
@@ -131,7 +212,7 @@ def parse_llm_response(
         except (ValueError, TypeError):
             continue
 
-    return AnalysisResult(document_id=document_id, instances=instances)
+    return AnalysisResult(document_id=document_id, instances=instances), was_repaired
 
 
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
@@ -202,23 +283,46 @@ def prompt_for_constructs(
 
     attempts = 0
     max_attempts = config.max_retries + 1
+    last_metadata: Optional[APIMetadata] = None
 
     while attempts < max_attempts:
         attempts += 1
 
         try:
             response_text, metadata = call_llm_api(prompt, config)
-            result = parse_llm_response(response_text, document_id, text, threshold)
+            last_metadata = metadata
+            result, was_repaired = parse_llm_response(
+                response_text, document_id, text, threshold
+            )
+            metadata.num_retries = attempts - 1
+            metadata.output_repaired = was_repaired
             return result, metadata
 
-        except (PromptingError, json.JSONDecodeError) as e:
+        except (PromptingError, ResponseParseError) as e:
+            if last_metadata is not None:
+                last_metadata.num_retries = attempts - 1
             if attempts < max_attempts:
                 time.sleep(1)
                 continue
             else:
+                if last_metadata is None:
+                    error_metadata = APIMetadata(
+                        model=config.model_name,
+                        num_retries=attempts - 1,
+                        error_message=str(e),
+                        error_type=type(e).__name__,
+                        error_output=str(e),
+                    )
+                else:
+                    last_metadata.error_message = str(e)
+                    last_metadata.error_type = type(e).__name__
+                    last_metadata.error_output = str(e)
+                    error_metadata = last_metadata
+
                 raise PromptingError(
                     f"Failed after {max_attempts} attempts for document "
-                    f"'{document_id}'. Last error: {e}"
+                    f"'{document_id}'. Last error: {e}",
+                    metadata=error_metadata,
                 ) from e
 
     raise PromptingError(f"Unexpected failure for document '{document_id}'")

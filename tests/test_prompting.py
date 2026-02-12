@@ -49,12 +49,13 @@ def test_valid_json_response() -> None:
         }
     )
 
-    result = parse_llm_response(response, "doc_001")
+    result, was_repaired = parse_llm_response(response, "doc_001")
 
     assert result.document_id == "doc_001"
     assert len(result.instances) == 1
     assert result.instances[0].construct == "Self-Efficacy"
     assert result.instances[0].confidence == 2
+    assert was_repaired is False
 
 
 def test_json_with_markdown_wrapper() -> None:
@@ -72,28 +73,45 @@ def test_json_with_markdown_wrapper() -> None:
 }
 ```"""
 
-    result = parse_llm_response(response, "doc_002")
+    result, was_repaired = parse_llm_response(response, "doc_002")
 
     assert len(result.instances) == 1
     assert result.instances[0].construct == "Resilience"
     assert result.instances[0].speaker_id is None
+    assert was_repaired is True
 
 
 def test_empty_instances() -> None:
     """Test parsing response with no instances."""
     response = '{"instances": []}'
 
-    result = parse_llm_response(response, "empty_doc")
+    result, was_repaired = parse_llm_response(response, "empty_doc")
 
     assert len(result.instances) == 0
+    assert was_repaired is False
 
 
 def test_invalid_json_raises_error() -> None:
     """Test that invalid JSON raises error."""
     response = "This is not valid JSON at all"
 
-    with pytest.raises(json.JSONDecodeError):
+    with pytest.raises(ResponseParseError):
         parse_llm_response(response, "bad_doc")
+
+
+def test_json_with_extra_text() -> None:
+    """Parse JSON embedded in extra text."""
+    response = """
+    Some preamble text.
+    {"instances": [{"construct": "A", "quote": "q", "confidence": 2}]}
+    Some trailing text.
+    """
+
+    result, was_repaired = parse_llm_response(response, "doc_extra")
+
+    assert len(result.instances) == 1
+    assert result.instances[0].construct == "A"
+    assert was_repaired is True
 
 
 def test_malformed_instance_skipped() -> None:
@@ -111,10 +129,11 @@ def test_malformed_instance_skipped() -> None:
         }
     )
 
-    result = parse_llm_response(response, "doc_004")
+    result, was_repaired = parse_llm_response(response, "doc_004")
 
     assert len(result.instances) == 1
     assert result.instances[0].construct == "Valid"
+    assert was_repaired is False
 
 
 def test_null_speaker_id() -> None:
@@ -132,9 +151,10 @@ def test_null_speaker_id() -> None:
         }
     )
 
-    result = parse_llm_response(response, "doc_005")
+    result, was_repaired = parse_llm_response(response, "doc_005")
 
     assert result.instances[0].speaker_id is None
+    assert was_repaired is False
 
 
 def test_confidence_boundary_values() -> None:
@@ -148,7 +168,8 @@ def test_confidence_boundary_values() -> None:
         }
     )
 
-    result = parse_llm_response(response, "doc_006")
+    result, was_repaired = parse_llm_response(response, "doc_006")
 
     assert result.instances[0].confidence == 0
     assert result.instances[1].confidence == 2
+    assert was_repaired is False

@@ -48,7 +48,7 @@ Your response:"""
 
 DEFAULT_MODEL = "anthropic/claude-3.5-sonnet"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
-MAX_RETRIES = 1
+MAX_RETRIES = 0
 REQUEST_TIMEOUT = 120.0
 
 
