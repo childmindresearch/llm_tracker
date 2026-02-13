@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import pandas as pd
 from typing import Callable, Optional
 
 from pychometrics.config import AnalyzerConfig
@@ -28,7 +29,7 @@ Decide if these quotes refer to the SAME passage or substantially the SAME idea.
 Return ONLY valid JSON in this format:
 {{
   "match": true | false,
-  "reason": "short explanation"
+  "match_confidence": <float between 0.0 and 1.0>
 }}
 """
 
@@ -42,8 +43,8 @@ class ComparisonError(Exception):
 @dataclass
 class QuoteMatchDecision:
     match: bool
-    reason: str
     method: str
+    match_confidence: Optional[float] = None
 
 
 def _strip_code_fences(text: str) -> str:
@@ -107,8 +108,16 @@ def _parse_match_response(response_text: str) -> QuoteMatchDecision:
         raise ComparisonError("Matcher response JSON must include a 'match' field.")
 
     match = bool(data.get("match"))
-    reason = str(data.get("reason", "")).strip()
-    return QuoteMatchDecision(match=match, reason=reason, method="llm")
+    raw_confidence = data.get("match_confidence", 1.0 if match else 0.0)
+
+    try:
+        confidence = float(raw_confidence)
+    except (TypeError, ValueError):
+        confidence = 1.0 if match else 0.0
+
+    confidence = max(0.0, min(1.0, confidence))
+
+    return QuoteMatchDecision(match=match, method="llm", match_confidence=confidence)
 
 
 def _build_match_prompt(construct: str, human_quote: str, llm_quote: str) -> str:
@@ -149,6 +158,102 @@ def _create_comparison_output_directory(
     return output_dir
 
 
+def _truncate(text: str, max_len: int) -> str:
+    if max_len <= 0:
+        return ""
+    if len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return text[:max_len]
+    return f"{text[: max_len - 3]}..."
+
+
+def format_comparison_table(
+    result: dict,
+    *,
+    max_quote_length: Optional[int] = None,
+) -> "pd.DataFrame":
+    """Build a row-level comparison dataframe from compare_documents() output.
+
+    Args:
+        result: A single-document comparison result from compare_documents().
+        max_quote_length: Optional quote truncation for display convenience.
+
+    Returns:
+        pandas DataFrame with one row per matched/human_only/llm_only item.
+    """
+
+    rows: list[dict] = []
+    comparisons = result.get("comparisons", [])
+    document_id = str(result.get("document_id", "unknown_document"))
+
+    for block in comparisons:
+        construct = str(block.get("construct", "Unknown"))
+
+        for match in block.get("matched", []):
+            row = {
+                "document_id": document_id,
+                "construct": construct,
+                "status": "matched",
+                "method": str(match.get("match_method", "")),
+                "human_confidence": match.get("human_confidence"),
+                "llm_confidence": match.get("llm_confidence"),
+                "match_confidence": match.get("match_confidence"),
+                "human_quote": str(match.get("human_quote", "")),
+                "llm_quote": str(match.get("llm_quote", "")),
+            }
+            if max_quote_length is not None:
+                row["human_quote"] = _truncate(row["human_quote"], max_quote_length)
+                row["llm_quote"] = _truncate(row["llm_quote"], max_quote_length)
+            rows.append(row)
+
+        for item in block.get("human_only", []):
+            row = {
+                "document_id": document_id,
+                "construct": construct,
+                "status": "human_only",
+                "method": "",
+                "human_confidence": item.get("human_confidence"),
+                "llm_confidence": item.get("llm_confidence"),
+                "match_confidence": None,
+                "human_quote": str(item.get("quote", "")),
+                "llm_quote": "",
+            }
+            if max_quote_length is not None:
+                row["human_quote"] = _truncate(row["human_quote"], max_quote_length)
+            rows.append(row)
+
+        for item in block.get("llm_only", []):
+            row = {
+                "document_id": document_id,
+                "construct": construct,
+                "status": "llm_only",
+                "method": "",
+                "human_confidence": item.get("human_confidence"),
+                "llm_confidence": item.get("llm_confidence"),
+                "match_confidence": None,
+                "human_quote": "",
+                "llm_quote": str(item.get("quote", "")),
+            }
+            if max_quote_length is not None:
+                row["llm_quote"] = _truncate(row["llm_quote"], max_quote_length)
+            rows.append(row)
+
+    columns = [
+        "document_id",
+        "construct",
+        "status",
+        "method",
+        "human_confidence",
+        "llm_confidence",
+        "match_confidence",
+        "human_quote",
+        "llm_quote",
+    ]
+
+    return pd.DataFrame(rows, columns=columns)
+
+
 class PychometricsComparator:
     """Compare human-coded and LLM-coded results using an LLM matcher."""
 
@@ -167,10 +272,10 @@ class PychometricsComparator:
         if config is not None:
             self.config = config
         else:
-            kwargs = {"api_key": api_key}
             if match_model is not None:
-                kwargs["model_name"] = match_model
-            self.config = AnalyzerConfig(**kwargs)
+                self.config = AnalyzerConfig(api_key=api_key, model_name=match_model)
+            else:
+                self.config = AnalyzerConfig(api_key=api_key)
 
     def _llm_match(self, construct: str, human: dict, llm: dict) -> QuoteMatchDecision:
         prompt = _build_match_prompt(
@@ -230,9 +335,11 @@ class PychometricsComparator:
                                 "construct": construct,
                                 "human_quote": h.get("quote"),
                                 "llm_quote": l.get("quote"),
+                                "human_confidence": h.get("confidence"),
+                                "llm_confidence": l.get("confidence"),
                                 "match": True,
-                                "match_reason": "exact",
                                 "match_method": "exact",
+                                "match_confidence": 1.0,
                             }
                         )
                         used_llm_indices.add(idx)
@@ -246,14 +353,21 @@ class PychometricsComparator:
                         continue
                     decision = self._match_quotes(construct, h, l)
                     if decision.match:
+                        match_confidence = (
+                            decision.match_confidence
+                            if decision.match_confidence is not None
+                            else 0.5
+                        )
                         matched.append(
                             {
                                 "construct": construct,
                                 "human_quote": h.get("quote"),
                                 "llm_quote": l.get("quote"),
+                                "human_confidence": h.get("confidence"),
+                                "llm_confidence": l.get("confidence"),
                                 "match": True,
-                                "match_reason": decision.reason,
                                 "match_method": decision.method,
+                                "match_confidence": match_confidence,
                             }
                         )
                         used_llm_indices.add(idx)
@@ -265,6 +379,8 @@ class PychometricsComparator:
                             "construct": construct,
                             "quote": h.get("quote"),
                             "speaker_id": h.get("speaker_id"),
+                            "human_confidence": h.get("confidence"),
+                            "llm_confidence": None,
                         }
                     )
 
@@ -276,6 +392,8 @@ class PychometricsComparator:
                         "construct": construct,
                         "quote": l.get("quote"),
                         "speaker_id": l.get("speaker_id"),
+                        "human_confidence": None,
+                        "llm_confidence": l.get("confidence"),
                     }
                 )
 
