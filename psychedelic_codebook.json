@@ -1,0 +1,2256 @@
+{
+  "life_satisfaction": {
+    "definition": "Measures general satisfaction with life and living conditions",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I'm satisfied with my life",
+      "I'm content with how things are going",
+      "My life is going well",
+      "I'm happy with my living situation",
+      "Things are good",
+      "I feel fulfilled",
+      "Life is treating me well",
+      "I'm pleased with where I am"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "satisfied with life",
+      "satisfied with living situation",
+      "overall life satisfaction",
+      "satisfied with overall well being",
+      "life close to ideal",
+      "excellent life conditions"
+    ],
+    "items": [
+      "I am satisfied with my life",
+      "Taking everything into consideration, during the past week how satisfied have you been with your living/household situation",
+      "How would you rate your overall life satisfaction and contentment during the past week",
+      "Taking everything into consideration, during the past week how satisfied have you been with your overall sense of well being",
+      "In most ways my life is close to my ideal",
+      "The conditions of my life are excellent"
+    ],
+    "item_references": [
+      "Satisfaction with Life Scale_3",
+      "Q-LES-Q-SF (Quality of Life Enjoyment and Satisfaction Questionnaire)_11",
+      "Q-LES-Q-SF (Quality of Life Enjoyment and Satisfaction Questionnaire)_16",
+      "Q-LES-Q-SF (Quality of Life Enjoyment and Satisfaction Questionnaire)_14",
+      "Satisfaction with Life Scale_1",
+      "Satisfaction with Life Scale_2"
+    ]
+  },
+  "eudaimonic_well_being": {
+    "definition": "Measures meaning of life, purpose, values, self-acceptance, and sense of life having richness and significance",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "My life has meaning",
+      "I feel authentic",
+      "I know what's important to me",
+      "I have a sense of purpose",
+      "My life feels rich and full",
+      "I appreciate life more",
+      "I'm living according to my values",
+      "Life has depth now",
+      "I feel more enthusiastic about life"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more richness",
+      "more meaning",
+      "philosophy of life changed positively",
+      "values changed positively",
+      "more authentic",
+      "more enthusiasm for life",
+      "appreciation for life increased",
+      "greater appreciation for life"
+    ],
+    "items": [
+      "Your life has more richness",
+      "Your life has more meaning",
+      "The experience has changed your philosophy of life positively",
+      "Your sense of values (i.e., what is important to you in life) has changed positively",
+      "You are a more authentic person",
+      "You have more enthusiasm for life in general",
+      "Your appreciation for life has increased",
+      "I have a greater appreciation for the value of my own life"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_10",
+      "PEQ (Persisting Effects Questionnaire)_6",
+      "PEQ (Persisting Effects Questionnaire)_1",
+      "PEQ (Persisting Effects Questionnaire)_9",
+      "PEQ (Persisting Effects Questionnaire)_11",
+      "PEQ (Persisting Effects Questionnaire)_8",
+      "PEQ (Persisting Effects Questionnaire)_3",
+      "PTGI (Post Traumatic Growth Inventory)_2"
+    ]
+  },
+  "social_well_being": {
+    "definition": "Measures quality of social relationships, interpersonal connections, and sense of belonging",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I feel connected to others",
+      "My relationships are positive",
+      "I'm satisfied with my social life",
+      "I feel close to my family",
+      "I understand people better",
+      "I'm more sensitive to others' needs",
+      "I care more about helping people",
+      "I feel like I belong"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more positive relationships",
+      "satisfied with social relationships",
+      "satisfied with family relationships",
+      "more sensitive to others",
+      "greater interpersonal perceptiveness",
+      "greater need for service",
+      "social concern increased"
+    ],
+    "items": [
+      "You have a more positive relationship with others",
+      "Taking everything into consideration, during the past week how satisfied have you been with your social relationships",
+      "Taking everything into consideration, during the past week how satisfied have you been with your family relationships",
+      "You have become more sensitive to the needs of others",
+      "You have greater interpersonal perceptiveness (i.e., sensitivity)",
+      "You now feel a greater need for service for others",
+      "Your social concern/compassion has increased"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_46",
+      "Q-LES-Q-SF (Quality of Life Enjoyment and Satisfaction Questionnaire)_5",
+      "Q-LES-Q-SF (Quality of Life Enjoyment and Satisfaction Questionnaire)_6",
+      "PEQ (Persisting Effects Questionnaire)_43",
+      "PEQ (Persisting Effects Questionnaire)_48",
+      "PEQ (Persisting Effects Questionnaire)_44",
+      "PEQ (Persisting Effects Questionnaire)_50"
+    ]
+  },
+  "spiritual_well_being": {
+    "definition": "Measures spiritual experiences, sense of connection to something greater",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I feel inner peace",
+      "I'm connected to something greater",
+      "I feel spiritually fulfilled",
+      "I experience a sense of the sacred",
+      "I'm at peace with myself",
+      "I feel centered"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more inner peace",
+      "profound inner peace"
+    ],
+    "items": [
+      "You have more inner peace (i.e. centeredness, serenity, calmness)",
+      "I experienced profound inner peace"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_37",
+      "5D-ASC (Altered States of Consciousness)_84"
+    ]
+  },
+  "calm": {
+    "definition": "the state of being peaceful, composed, and free from agitation, worry, or anger",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Related to well-being",
+    "examples": [
+      "I feel calm",
+      "I'm relaxed",
+      "I'm at peace",
+      "I feel tranquil",
+      "I'm not worried",
+      "I feel composed",
+      "I'm serene"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "peace and tranquillity",
+      "calm, relaxed",
+      "relaxed",
+      "calm"
+    ],
+    "items": [
+      "Feelings of peace and tranquillity",
+      "I have felt calm and relaxed",
+      "I've been feeling relaxed",
+      "I feel calm"
+    ],
+    "item_references": [
+      "MEQ (Mystical Experiences Questionnaire)_12",
+      "WHO-5 Well-Being Index_2",
+      "Short Warwick-Edinburgh Mental Well-being Scale_3",
+      "STAI (State-Trait Anxiety Inventory)_1"
+    ]
+  },
+  "resilience": {
+    "definition": "Measures ability to cope with difficulties, bounce back from adversity, and adapt to challenges",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Related to well-being",
+    "examples": [
+      "I can handle whatever comes",
+      "I bounce back from setbacks",
+      "I adapt well to change",
+      "I cope with difficulties",
+      "I'm resilient",
+      "I can get through tough times",
+      "I recover from challenges",
+      "I'm good at overcoming obstacles"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "optimism": {
+    "definition": "Measures optimistic outlook, positive expectations, and hopeful thinking",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Related to well-being",
+    "examples": [
+      "I'm optimistic about the future",
+      "Things will work out",
+      "I expect good things to happen",
+      "I'm hopeful",
+      "The future looks bright",
+      "I see the positive side",
+      "Things are looking up"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more optimism",
+      "optimistic about future"
+    ],
+    "items": [
+      "You have more optimism",
+      "I've been feeling optimistic about the future"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_16",
+      "Short Warwick-Edinburgh Mental Well-being Scale_1"
+    ]
+  },
+  "openness": {
+    "definition": "Measures openness to new experiences, imagination, creativity, intellectual curiosity, and appreciation for variety",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Personality: OCEAN (traits)",
+    "examples": [
+      "I have a vivid imagination",
+      "I'm creative",
+      "I'm open to new experiences",
+      "I'm curious about things",
+      "I appreciate art and beauty",
+      "I like to try new things",
+      "I think outside the box",
+      "I have original ideas"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "vivid imagination",
+      "extremely vivid imagination",
+      "good imagination",
+      "more creative",
+      "creative and inventive",
+      "original, new ideas"
+    ],
+    "items": [
+      "If I wish I can imagine things so vividly that it's like watching a good movie or hearing a good story",
+      "My imagination was extremely vivid",
+      "Has a good, active imagination",
+      "You are a more creative person",
+      "Is creative and inventive",
+      "Is original, comes up with new ideas"
+    ],
+    "item_references": [
+      "Tellegen Absorption Scale_7",
+      "5D-ASC (Altered States of Consciousness)_80",
+      "BFI-44 (Big Five Personality Inventory)_20",
+      "PEQ (Persisting Effects Questionnaire)_7",
+      "BFI-44 (Big Five Personality Inventory)_25",
+      "BFI-44 (Big Five Personality Inventory)_5"
+    ]
+  },
+  "conscientiousness": {
+    "definition": "Measures organization, attention to detail, carefulness, thoroughness, and self-discipline in actions",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Personality: OCEAN (traits)",
+    "examples": [
+      "I'm organized",
+      "I do things carefully",
+      "I'm thorough in my work",
+      "I pay attention to details",
+      "I'm disciplined",
+      "I plan ahead",
+      "I'm reliable",
+      "I complete tasks properly"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "does things quickly and carefully",
+      "does things carefully"
+    ],
+    "items": [
+      "Does things quickly and carefully",
+      "Does things carefully and completely"
+    ],
+    "item_references": [
+      "BFI-44 (Big Five Personality Inventory)_33",
+      "Ten Item Personality Inventory_3"
+    ]
+  },
+  "extraversion": {
+    "definition": "Measures sociability, assertiveness, and preference for social interaction",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Personality: OCEAN (traits)",
+    "examples": [
+      "I'm outgoing",
+      "I like being around people",
+      "I'm sociable",
+      "I enjoy social gatherings",
+      "I'm talkative",
+      "I'm assertive",
+      "I'm energized by others",
+      "I like meeting new people"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "agreeableness": {
+    "definition": "Measures cooperation, trust, kindness, tolerance, and concern for others",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Personality: OCEAN (traits)",
+    "examples": [
+      "I'm patient with others",
+      "I'm tolerant",
+      "I'm kind",
+      "I care about people",
+      "I'm cooperative",
+      "I trust others",
+      "I'm compassionate",
+      "I'm helpful"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more patience",
+      "more tolerant"
+    ],
+    "items": [
+      "You have more patience/ability to tolerate frustration",
+      "You are more tolerant toward others"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_14",
+      "PEQ (Persisting Effects Questionnaire)_45"
+    ]
+  },
+  "experiential_avoidance": {
+    "definition": "Measures avoidance of difficult emotions, challenging experiences, fear, and tendency to escape uncomfortable states",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I was afraid it wouldn't end",
+      "I tried to make it stop",
+      "I wanted to escape the feeling",
+      "I couldn't handle this",
+      "I need this to go away",
+      "I'm scared this will last forever",
+      "I can't face this",
+      "I want out of this state"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "afraid state would last forever"
+    ],
+    "items": [
+      "I was afraid that the state I was in would last forever"
+    ],
+    "item_references": [
+      "CEQ (Challenging Experiences Questionnaire)_13"
+    ]
+  },
+  "surrender": {
+    "definition": "Measures capacity to surrender, let go of control, and release resistance",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I let go of control",
+      "I stopped resisting",
+      "I surrendered to the experience",
+      "I released my resistance",
+      "I stopped struggling",
+      "I'm ready to accept what comes",
+      "I don't need to fight this",
+      "I can just be with this"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "released control",
+      "letting go of resistance",
+      "don't have to keep struggling",
+      "ready to accept what is to come",
+      "ceased straining",
+      "ready to receive whatever is ahead",
+      "able to listen without fighting",
+      "let go of compulsion"
+    ],
+    "items": [
+      "I've stopped resisting and released control",
+      "I now have to let go of resistance",
+      "I now know I don't have to keep struggling",
+      "I am now ready to accept what is to come",
+      "I have now ceased straining",
+      "I am now ready to receive whatever is ahead, even if difficult",
+      "I now feel able to listen without fighting back",
+      "I have now let go of compulsion and thinking"
+    ],
+    "item_references": [
+      "SOS (State of Surrender)_1",
+      "SOS (State of Surrender)_2",
+      "SOS (State of Surrender)_3",
+      "SOS (State of Surrender)_4",
+      "SOS (State of Surrender)_5",
+      "SOS (State of Surrender)_6",
+      "SOS (State of Surrender)_7",
+      "SOS (State of Surrender)_8"
+    ]
+  },
+  "acceptance": {
+    "definition": "Measures capacity to accept present thoughts, feelings, experiences, and circumstances",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I accept what is",
+      "I'm okay with how I feel",
+      "I can be with this",
+      "I accept my thoughts",
+      "I don't need to change this",
+      "It's okay to feel this way",
+      "I accept the present moment",
+      "I allow this experience"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "absorption_flow": {
+    "definition": "Measures capacity for deep absorption in experiences and flow states",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I was completely absorbed",
+      "Time disappeared",
+      "I lost myself in the experience",
+      "I was fully immersed",
+      "I was in the flow",
+      "I forgot about everything else",
+      "I was totally engaged",
+      "I merged with the experience"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "emotional_breakthrough": {
+    "definition": "Measures emotional breakthrough experiences, cathartic release, and resolution of emotional issues",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I had an emotional breakthrough",
+      "I released so much emotion",
+      "I finally let it all out",
+      "I worked through something important",
+      "I had a cathartic release",
+      "I resolved something I'd been holding",
+      "Emotions poured out of me",
+      "I broke through a barrier"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "spirituality_mystical": {
+    "definition": "Measures spiritual experiences, mystical-type experiences, and transcendent states",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I encountered ultimate reality",
+      "I felt one with everything",
+      "I experienced unity",
+      "I had a mystical experience",
+      "I was connected to all things",
+      "I felt oneness",
+      "I saw what's truly real",
+      "I experienced the divine",
+      "I transcended myself"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+        "encountered ultimate reality",
+        "certainty of encounter with ultimate reality",
+        "unity with ultimate reality",
+        "recognize mystical experiences",
+        "oneness with surroundings",
+        "oneness with inner world",
+        "one with surroundings",
+        "connected to everything"
+    ],
+    "items": [
+      "You are convinced now, as you look back on your experience, that in it you encountered ultimate reality",
+      "Certainty of encounter with ultimate reality (in the sense of being able to 'know' and 'see' what is really real)",
+      "Experience of unity with ultimate reality",
+      "I think I really know what some people mean when they talk about mystical experiences",
+      "Experience of oneness or unity with the objects and/or persons perceived in your surroundings",
+      "Experience of oneness in relation to an \"inner world\" within",
+      "I felt one with my surroundings",
+      "I had the sense of being connected to everything"
+    ],
+    "item_references": [
+      "MEQ (Mystical Experiences Questionnaire)_23",
+      "MEQ (Mystical Experiences Questionnaire)_9",
+      "MEQ (Mystical Experiences Questionnaire)_28",
+      "Tellegen Absorption Scale_8",
+      "MEQ (Mystical Experiences Questionnaire)_6",
+      "MEQ (Mystical Experiences Questionnaire)_20",
+      "5D-ASC (Altered States of Consciousness)_34",
+      "Awe Experiences Scale Short-Form_5"
+    ]
+  },
+  "insight": {
+    "definition": "Measures psychological insight, self-understanding, and gaining new perspectives",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I understand myself better now",
+      "I gained new insight",
+      "I see things differently",
+      "I realized something about myself",
+      "I became aware of patterns I ignored",
+      "I had a realization",
+      "Things make sense now",
+      "I see my life in a new way",
+      "I understand my past better"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+        "conscious of ignored lifestyle aspects",
+        "conscious of ignored self aspects",
+        "conscious of ignored past aspects"
+    ],
+    "items": [
+      "I have become more conscious of aspects of my lifestyle that I used to ignore or not be fully aware of",
+      "I have become more conscious of aspects of my 'self' that I used to ignore or not be fully aware of",
+      "I have become more conscious of aspects of my past that I used to ignore or not be fully aware of"
+    ],
+    "item_references": [
+      "PIS (Psychological Insight Scale)_6",
+      "PIS (Psychological Insight Scale)_5",
+      "PIS (Psychological Insight Scale)_4"
+    ]
+  },
+  "cognitive_flexibility": {
+    "definition": "Measures ability to shift thinking patterns, mental flexibility, and adaptability in thought processes",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic adjacent",
+    "examples": [
+      "I can see things from different angles",
+      "I'm more mentally flexible",
+      "I can shift my perspective",
+      "I'm open to changing my mind",
+      "I think more adaptably",
+      "I'm not stuck in one way of thinking",
+      "I can consider multiple viewpoints",
+      "My thinking is more fluid"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "post_traumatic_growth": {
+    "definition": "Measures positive psychological change following adversity or challenging experiences",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic adjacent",
+    "examples": [
+      "I've grown from my struggles",
+      "I'm stronger from what I went through",
+      "I found meaning in my hardship",
+      "I appreciate life more after what happened",
+      "I'm a better person because of it",
+      "I've changed in positive ways",
+      "That difficult experience helped me grow",
+      "I discovered strengths I didn't know I had"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "depressed_mood": {
+    "definition": "Low mood and sadness",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I feel sad all the time",
+      "MDD",
+      "anhedonia",
+      "cried",
+      "depression",
+      "despair",
+      "feel down",
+      "feeling down",
+      "feeling low",
+      "low mood",
+      "melancholic",
+      "melancholy",
+      "sadness",
+      "sorrow"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "depression increased",
+      "sadness",
+      "sad, depressed",
+      "down, depressed, hopeless",
+      "feel sad less than half time",
+      "feel sad nearly all time",
+      "feel sad more than half time"
+    ],
+    "items": [
+      "Feelings of depression have increased",
+      "Sadness",
+      "Is sad, depressed",
+      "Feeling down, depressed, or hopeless",
+      "I feel sad less than half the time",
+      "I feel sad nearly all of the time",
+      "I feel sad more than half the time"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_39",
+      "CEQ (Challenging Experiences Questionnaire)_2",
+      "BFI-44 (Big Five Personality Inventory)_4",
+      "PHQ-9_2",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_18",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_20",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_19"
+    ]
+  },
+  "anxiety": {
+    "definition": "Anxiety is a feeling of worry, nervousness, or unease, often about an imminent event or something with an uncertain outcome. We include anxiety disorders",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "Xanax",
+      "phobia",
+      "apprehension",
+      "worry",
+      "nervous",
+      "xanax",
+      "can't relax",
+      "diazepam",
+      "phobic",
+      "anxiety",
+      "anxious",
+      "worried",
+      "Ativan",
+      "agoraphobia",
+      "social anxiety"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "anxiety increased",
+      "Trouble relaxing"
+    ],
+    "items": [
+      "Feelings of anxiety have increased",
+      "Trouble relaxing"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_40",
+      "GAD-7_4"
+    ]
+  },
+  "anhedonia": {
+    "definition": "The loss of capacity or failure to experience pleasure. The lack of motivation and apathy",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I don't enjoy anything",
+      "anhedonia",
+      "don't enjoy things",
+      "don't feel pleasure",
+      "emotionally flat",
+      "emotionally numb",
+      "joyless",
+      "lack of motivation",
+      "lack of pleasure",
+      "no enthusiasm",
+      "nothing feels good",
+      "nothing is fun",
+      "uninspired"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "virtually no interest",
+      "less interested in people",
+      "interest in only one or two activities"
+    ],
+    "items": [
+      "I have virtually no interest in formerly pursued activities",
+      "I notice that I am less interested in people or activities",
+      "I find I have interest in only one or two of my formerly pursued activities"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_52",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_50",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_51"
+    ]
+  },
+  "low_energy_fatigue": {
+    "definition": "Fatigue is a state of extreme tiredness and reduced energy, mental or physical, often resulting from exertion, lack of sleep, stress, or illness.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "sluggish",
+      "burnout",
+      "burned-out",
+      "fatigue",
+      "groggy",
+      "sleepy",
+      "too tired",
+      "drowsy",
+      "burnt-out",
+      "burned out",
+      "burnt out",
+      "don't have energy",
+      "yawn",
+      "lethargic",
+      "weary"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "thoughts and actions slowed",
+      "thinking slowed down",
+      "tired more easily",
+      "no energy for daily activities"
+    ],
+    "items": [
+      "My thoughts and actions were slowed down",
+      "I find that my thinking is slowed down or my voice sounds dull or flat",
+      "I get tired more easily than usual",
+      "I really cannot carry out most of my usual daily activities because I just don't have the energy"
+    ],
+    "item_references": [
+      "5D-ASC (Altered States of Consciousness)_2",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_58",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_54",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_56"
+    ]
+  },
+  "guilt": {
+    "definition": "Guilt involves a focus on a specific behavior that is negatively evaluated",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I shouldn't have said that",
+      "confession",
+      "sorry",
+      "guilt",
+      "I should have known better",
+      "take the blame",
+      "I shouldn't have",
+      "I wish I hadn't",
+      "I'm wrong",
+      "regret",
+      "I'm to blame",
+      "my mistake",
+      "I am to blame",
+      "wish I could take it back",
+      "I take responsibility"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "persistent self-accusations",
+      "delusions of ruin"
+    ],
+    "items": [
+      "Persistent self-accusations, or definite but still rational ideas of guilt or sin or increasingly pessimistic about the future",
+      "Delusions of ruin, remorse or unredeemable sin or self-accusations which are absurd and unshakable"
+    ],
+    "item_references": [
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_35",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_36"
+    ]
+  },
+  "concentration_issues": {
+    "definition": "Measures problems with concentration, cognitive focus, attention, and decision-making",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I can't concentrate",
+      "It's hard to focus",
+      "My mind wanders",
+      "I can't make decisions",
+      "I struggle to pay attention",
+      "I can't read or follow conversations",
+      "I'm so distracted",
+      "I can't think clearly"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "concentration difficulties",
+      "trouble concentrating",
+      "cannot concentrate",
+      "struggle to focus",
+      "indecisive",
+      "occasionally indecisive"
+    ],
+    "items": [
+      "Difficulties in concentrating and sustaining thought which reduces ability to read or hold a conversation",
+      "Trouble concentrating on things, such as reading the newspaper or watching television",
+      "I cannot concentrate well enough to read or cannot make even minor decisions",
+      "Most of the time, I struggle to focus my attention or to make decisions",
+      "I feel indecisive",
+      "I occasionally feel indecisive or find that my attention wanders"
+    ],
+    "item_references": [
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_23",
+      "PHQ-9_7",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_40",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_39",
+      "STAI (State-Trait Anxiety Inventory)_14",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_38"
+    ]
+  },
+  "worry": {
+    "definition": "Measures worry and inability to control worrying thoughts",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I can't stop worrying",
+      "I worry all the time",
+      "I'm always anxious about something",
+      "My worries won't go away",
+      "I can't control my worry",
+      "I keep thinking about what could go wrong",
+      "I'm consumed by worry",
+      "I worry about everything"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "rumination": {
+    "definition": "Self-focused thoughts on negative mood and the possible causes and consequences of that mood (Brinker and Dozois). Ruminative flooding: uncontrolled and racing thoughts and somatic symptoms of headache and pressure in the head (Galynker et al, 2017)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "can't stop thinking",
+      "chewing over",
+      "fixating",
+      "fixation",
+      "mental loop",
+      "overanalyzing",
+      "overthinking",
+      "overwhelming thoughts",
+      "recurring thoughts",
+      "ruminating",
+      "rumination",
+      "stewing in",
+      "thinking too much",
+      "thoughts flood"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "sleep_issues": {
+    "definition": "Sleep issues, also known as sleep disorders, refer to conditions that disrupt normal sleep patterns. These issues can involve problems falling asleep, staying asleep, or experiencing restful sleep. Common examples include insomnia, sleep apnea, restless leg syndrome, and narcolepsy.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "can't sleep",
+      "night terrors",
+      "not sleeping",
+      "sleep disorder",
+      "snoring",
+      "c-pap",
+      "trouble sleeping",
+      "insomnia",
+      "sleep apnea",
+      "hypersomnia",
+      "sleep deprived",
+      "narcolepsy",
+      "sleepless",
+      "oversleeping",
+      "circadian rhythm disorder"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "sleep longer than 12 hours",
+      "sleep no longer than 12 hours",
+      "sleep no longer than 10 hours",
+      "sleep reduced by two hours",
+      "less than two hours sleep",
+      "sleep problems",
+      "slight sleep difficulty",
+      "awaken 1 hour early, can't go back to sleep",
+      "awaken 1 hour early, go back to sleep",
+      "awaken more than 30 minutes early",
+      "restless, light sleep"
+    ],
+    "items": [
+      "I sleep longer than 12 hours in a 24-hour period including naps",
+      "I sleep no longer than 12 hours in a 24-hour period including naps",
+      "I sleep no longer than 10 hours in a 24-hour period including naps",
+      "Sleep reduced or broken by at least two hours",
+      "Less than two or three hours sleep",
+      "Trouble falling or staying asleep, or sleeping too much",
+      "Slight difficulty dropping off to sleep or slightly reduced, light or fitful sleep",
+      "I awaken at least 1 hour before I need to, and can't go back to sleep",
+      "I almost always awaken at least 1 hour or so before I need to, but I go back to sleep eventually",
+      "More than half the time, I awaken more than 30 minutes before I need to get up",
+      "I have a restless, light sleep with a few brief awakenings each night"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_16",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_15",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_14",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_15",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_16",
+      "PHQ-9_3",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_14",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_12",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_11",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_10",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_6"
+    ]
+  },
+  "appetite_eating_weight": {
+    "definition": "Measures appetite changes, eating behaviors, food intake patterns, and weight changes",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I have no appetite",
+      "I'm eating too much",
+      "Food doesn't taste good",
+      "I've lost weight",
+      "I've gained weight",
+      "I can't eat",
+      "I'm overeating",
+      "My appetite has changed",
+      "I force myself to eat"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "eat much less",
+      "eat somewhat less",
+      "rarely eat",
+      "regularly eat more",
+      "need to eat more frequently",
+      "appetite problems",
+      "no change in appetite",
+      "slightly reduced appetite",
+      "no appetite or tasteless food",
+      "driven to overeat",
+      "lost 5 pounds or more",
+      "lost 2 pounds or more",
+      "gained 2 pounds or more",
+      "gained 5 pounds or more",
+      "slight weight loss",
+      "slight weight gain",
+      "no change in weight"
+    ],
+    "items": [
+      "I eat much less than usual and only with personal effort",
+      "I eat somewhat less often or lesser amounts of food than usual",
+      "I rarely eat within a 24-hour period, and only with extreme personal effort or when others persuade me to eat",
+      "I regularly eat more often and/or greater amounts of food than usual",
+      "I feel a need to eat more frequently than usual",
+      "Poor appetite or overeating",
+      "Slightly reduced appetite",
+      "No appetite or food is tasteless",
+      "I feel driven to overeat both at mealtime and between meals",
+      "I have lost 5 pounds or more",
+      "I have lost 2 pounds or more",
+      "I have gained 2 pounds or more",
+      "I have gained 5 pounds or more",
+      "I feel as if I've had a slight weight loss",
+      "I feel as if I've had a slight weight gain",
+      "I have not had a change in my weight"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_23",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_22",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_24",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_27",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_26",
+      "PHQ-9_5",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_21",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_18",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_19",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_28",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_32",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_31",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_35",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_36",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_30",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_34",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_29"
+    ]
+  },
+  "suicidal_ideation": {
+    "definition": "Measures thoughts of death, suicide, self-harm, and suicidal behaviors",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I think about suicide",
+      "I want to die",
+      "I think about death",
+      "I'd be better off dead",
+      "I want to hurt myself",
+      "I have a suicide plan",
+      "I think about ending it",
+      "I wish I were dead", 
+      "I want to kill myself"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "think of suicide several times a day",
+      "think of suicide several times a week",
+      "thoughts of death, self-harm"
+    ],
+    "items": [
+      "I think of suicide or death several times a day in some detail, or I have made specific plans for suicide or have actually tried to take my life",
+      "I think of suicide or death several times a week for several minutes",
+      "Thoughts that you would be better off dead, or of hurting yourself"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_48",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_47",
+      "PHQ-9_9"
+    ]
+  },
+  "agitation_restlessness": {
+    "definition": "Agitation is a state of mental and/or physiological restlessness. It can either be of entirely mental nature and thereby be non-observable from the outside or it can be accompanied by a physiological component that involves aimless behaviors or fidgety movements on a low-grade organizational level like pacing or jittering",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "agitated",
+      "agitation"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "restless",
+      "moving slowly or fidgety",
+      "often fidgety",
+      "impulses to move about",
+      "unable to stay seated"
+    ],
+    "items": [
+      "Being so restless that it is hard to sit still",
+      "Moving or speaking so slowly that other people could have noticed. Or the opposite being so fidgety or restless that you have been moving around a lot more than usual",
+      "I'm often fidgety, wringing my hands, or need to shift how I am sitting",
+      "I have impulses to move about and am quite restless",
+      "At times, I am unable to stay seated and need to pace around"
+    ],
+    "item_references": [
+      "GAD-7_5",
+      "PHQ-9_8",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_62",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_63",
+      "QIDS (Quick Inventory of Depressive Symptomatology)_64"
+    ]
+  },
+  "irritability": {
+    "definition": "Aggression is behavior intended to harm or intimidate others. It can be physical or verbal, manifesting as threats, assaults, or hostile actions.  Irritability: a proneness to experience negative affective states, such as anger, annoyance, and frustration upon little provocation, and may be outwardly expressed in the form of aggressive behavior.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "hateful",
+      "wrath",
+      "aggressive",
+      "confrontational",
+      "hostile",
+      "angry",
+      "raging",
+      "scream",
+      "resentment",
+      "combative",
+      "argumentative",
+      "spiteful",
+      "rage",
+      "irritated",
+      "pissed off"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "negative anger expression increased",
+      "often get angry",
+      "easily annoyed, irritable"
+    ],
+    "items": [
+      "Your negative expression of anger (e.g. ridicule, outward expression of irritability toward others) has increased",
+      "I often get angry at the way people treat me",
+      "Becoming easily annoyed or irritable"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_57",
+      "NEO-FFI (NEO Five Factor Inventory) - 60 items_36",
+      "GAD-7_6"
+    ]
+  },
+  "somatic_symptoms": {
+    "definition": "Measures physical symptoms associated with psychological distress",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychopathology",
+    "examples": [
+      "I have headaches",
+      "My body hurts",
+      "I feel physical pain",
+      "I have stomach problems",
+      "My chest feels tight",
+      "I feel physically ill",
+      "I have unexplained aches",
+      "My body is reacting to stress"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "self_confidence": {
+    "definition": "Measures self-confidence and sense of personal agency",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I feel confident",
+      "I believe in myself",
+      "I'm self-assured",
+      "I trust my abilities",
+      "I feel capable",
+      "I have faith in myself",
+      "I'm sure of myself",
+      "I feel empowered"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "self-confidence increased",
+      "confident",
+      "self confident"
+    ],
+    "items": [
+      "Your self-confidence/self-assurance has increased",
+      "I've been feeling confident",
+      "I feel self confident"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_17",
+      "WEMWBS (Warwick-Edinburgh Mental Well-being Scale)_10",
+      "STAI (State-Trait Anxiety Inventory)_11"
+    ]
+  },
+  "positive_behavioral_change": {
+    "definition": "Measures positive changes in behavior and life conduct",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic adjacent",
+    "examples": [
+      "I quit smoking",
+      "I changed my habits",
+      "I'm making better choices",
+      "My behavior has improved",
+      "I'm living differently now",
+      "I stopped doing destructive things",
+      "I'm taking better care of myself",
+      "I made positive changes"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "behavior changed positively",
+      "self-described behavioral changes"
+    ],
+    "items": [
+      "Your behavior has changed in ways you would consider positive since the experience",
+      "Self-described behavioral changes (ie, quitting smoking)"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_59",
+      "Other Open Response Items_4"
+    ]
+  },
+  "humor_playfulness": {
+    "definition": "Measures capacity for humor, playfulness, and lighthearted approach to life",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I'm more playful",
+      "I laugh more",
+      "I have a sense of humor about things",
+      "I'm lighthearted",
+      "I can be silly",
+      "I don't take everything so seriously",
+      "I find joy in playfulness",
+      "Life feels lighter"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "more humor/playfulness"
+    ],
+    "items": [
+      "You have more good-natured humor/playfulness/lightness of being"
+    ],
+    "item_references": [
+      "PEQ (Persisting Effects Questionnaire)_13"
+    ]
+  },
+  "music": {
+    "definition": "Measures how music influence overall experience",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "The music guided my emotions",
+      "I could see the music",
+      "The music led me through different phases",
+      "It felt like the music was communicating with me",
+      "I realized the music reflected my mind",
+      "The music helped me",
+      "I became one with the music",
+      "The music took me on a journey"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "positive aspects of music",
+      "negative aspects of music",
+      "music influence experience",
+      "different styles influence"
+    ],
+    "items": [
+      "Were there any aspects in the music that influenced your experience in a positive way",
+      "Were there any aspects in the music that influenced your experience in a negative way",
+      "Did the music influence your experience and if so in what ways",
+      "Can you comment on how the different styles of music influenced your experience and which music did you prefer"
+    ],
+    "item_references": [
+      "Semi-structured Interview on Music_3",
+      "Semi-structured Interview on Music_4",
+      "Semi-structured Interview on Music_1",
+      "Semi-structured Interview on Music_2"
+    ]
+  },
+  "interest_engagement": {
+    "definition": "Measures level of interest in activities, people, and surroundings",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Well-being",
+    "examples": [
+      "I'm interested in people",
+      "I'm curious about things",
+      "I want to try new things",
+      "I'm engaged with life",
+      "I find things interesting",
+      "I'm excited to explore",
+      "I'm drawn to learn",
+      "I'm fascinated by the world"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [
+      "interested in other people",
+      "interested in new things"
+    ],
+    "items": [
+      "I've been feeling interested in other people",
+      "I've been interested in new things"
+    ],
+    "item_references": [
+      "WEMWBS (Warwick-Edinburgh Mental Well-being Scale)_4",
+      "WEMWBS (Warwick-Edinburgh Mental Well-being Scale)_13"
+    ]
+  },
+  "lonely_isolated": {
+    "definition": "Loneliness: aversive state experienced when a discrepancy exists between the interpersonal relationships one wishes to have and those that one perceives they currently have. The perception that one's social relationships are not living up to some expectation (Heinrich & Gullone 2006). Isolation: the expression of solitary behavior that results from peer rejection (Rubin & Burgess). Related to thwarted belongingness where the person perceives loneliness, isolation, and a failing to meet one's need to belong (Van Orden et al 2010)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "no one to turn to",
+      "no one will miss me",
+      "nobody thinks about me",
+      "nobody wants me here",
+      "no friends",
+      "no one misses me",
+      "I am alone",
+      "no one cares",
+      "have no one",
+      "don't have anyone",
+      "feel ignored",
+      "have nobody",
+      "lonely",
+      "no one to talk",
+      "no one I can talk to"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "isolation and loneliness",
+      "isolation from people",
+      "isolated from everything and everyone"
+    ],
+    "items": [
+      "Isolation and loneliness",
+      "Feeling of isolation from people and things",
+      "I felt isolated from everything and everyone"
+    ],
+    "item_references": [
+      "CEQ (Challenging Experiences Questionnaire)_1",
+      "CEQ (Challenging Experiences Questionnaire)_10",
+      "CEQ (Challenging Experiences Questionnaire)_24"
+    ]
+  },
+  "negative_relationship_types_processes": {
+    "definition": "Mention of potentially negative relationship types (widow, my ex) and processes (divorce, ghosting)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "broke up",
+      "ghosted",
+      "abusive",
+      "enemy",
+      "blocked me",
+      "unsupportive",
+      "betrayal",
+      "toxic relatioship",
+      "domestic violence",
+      "he's toxic",
+      "grudge",
+      "breakup",
+      "sexual abuse",
+      "unfaithful",
+      "codependent"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "kinship": {
+    "definition": "Types of family, friends, and other key social relationships",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "mother",
+      "half-brother",
+      "spouse",
+      "husband",
+      "godson",
+      "marital",
+      "companion",
+      "aunt",
+      "best friend",
+      "foster children",
+      "teammate",
+      "son",
+      "bf",
+      "daughter",
+      "wife"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "being_bullied": {
+    "definition": "Bullying is defined as intentional, repeated, and harmful aggressive behavior (verbal, physical, social) often with an imbalance of power between the perpetrators and the victims",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "beat me up",
+      "call me fat",
+      "bullies",
+      "bully",
+      "calling me names",
+      "embarrassed me",
+      "makes fun of me",
+      "bullied",
+      "leak nude",
+      "mock me",
+      "push me around",
+      "harassment",
+      "try to make me feel bad",
+      "ostracized",
+      "make fun of me"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "sexual_abuse_harassment": {
+    "definition": "Any non-consensual act or behavior of a sexual nature imposed on someone. It can range from unwanted sexual touching and coercion to rape and exploitation. We also include sexual harassment in this lexicon.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "forced into having sex",
+      "forced me to touch",
+      "forced me to have sex",
+      "rough sex",
+      "stalking",
+      "unwanted sex",
+      "rape",
+      "not consensual",
+      "sex offense",
+      "sex trafficking",
+      "sexual violence",
+      "sexual assault",
+      "date rape",
+      "groped me",
+      "molested me"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "physical_violence": {
+    "definition": "acts of physical force intended to hurt, damage, or kill someone or something. It's a broader term that can encompass abuse, assault, and other forms of harmful physical contact",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "punched me",
+      "strangled me",
+      "beating up",
+      "child abuse",
+      "physical abuse",
+      "slapped me",
+      "physically attacked",
+      "kidnap",
+      "assault",
+      "stabbing me",
+      "choking me",
+      "pull my hair",
+      "slammed me",
+      "hands on me",
+      "rough up"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "alcohol_use_behavior": {
+    "definition": "Mentions of types of alcohol beverages and related behaviors (drinking), measures (shot), and states (drunk)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "urge to drink",
+      "brewery",
+      "rehab",
+      "alateen",
+      "bartender",
+      "keg",
+      "chardonnay",
+      "liquor",
+      "cocktail",
+      "alcohol",
+      "beer",
+      "budweiser",
+      "hangover",
+      "hungover",
+      "whisky"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "substance_use_behavior": {
+    "definition": "Mentions of types of abused substances and related behaviors (snort), measures (8 ball), and states (high, buzz)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "sedative",
+      "barbiturate",
+      "alprazolam",
+      "Zoloft",
+      "vodka",
+      "codeine",
+      "codone",
+      "vaping",
+      "THC",
+      "nembutal",
+      "benzodiazepine",
+      "intoxicant",
+      "lorazepam",
+      "marihuana",
+      "escitalopram"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "impulsive": {
+    "definition": "A predisposition toward rapid, unplanned reactions to internal or external stimuli without regard to the negative consequences of these reactions to the impulsive individuals or to others",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "act on impulses",
+      "act without thinking",
+      "impulsive",
+      "impulsivity",
+      "rash decision",
+      "reckless",
+      "say things without thinking",
+      "snap decision",
+      "spur of the moment",
+      "urge"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "defeated_feeling_like_a_failure": {
+    "definition": "The perception of a failed struggle, feelings of powerlessness and a sense of losing social status or missing personal goals",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I feel like a failure",
+      "I'm a failure",
+      "I'm a loser",
+      "am powerless",
+      "crushed",
+      "defeated",
+      "demoralized",
+      "feel powerless",
+      "humiliated",
+      "inferior"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "feeling bad about yourself, failure",
+      "fluctuating ideas of failure"
+    ],
+    "items": [
+      "Feeling bad about yourself or that you are a failure or have let yourself or your family down",
+      "Fluctuating ideas of failure, self-reproach or self depreciation"
+    ],
+    "item_references": [
+      "PHQ-9_6",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_34"
+    ]
+  },
+  "feeling_like_a_burden": {
+    "definition": "Misperceptions of being a burden on close others and is characterized by self-hatred as well as a belief that one is a liability for others.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I annoy others",
+      "I make things worse",
+      "I'm annoying",
+      "be better without me",
+      "better off without me",
+      "difficult for me to ask for help",
+      "feel guilty about others caring for me",
+      "sorry for existing"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "shame_self-disgust_worthlessness": {
+    "definition": "Self-disgust: the basic emotion of disgust becomes directed at a core and stable feature of the self (Clarke et al 2019). Shame: the entire self that is painfully scrutinized and negatively evaluated, considering oneself a bad person (Tangney). Worthlessness: often measured through low self esteem (ex Horvath & morf). self criticism: \"tendency to ruminate on feelings of inadequacy and personal failure\" (Coyne & whiffen)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "not deserving of life",
+      "I'm ugly",
+      "I'm a freak",
+      "I'm a mistake",
+      "self-doubt",
+      "am fucked up",
+      "self-hate",
+      "I don't deserve to be here",
+      "I'm inadequate",
+      "disappointed in myself",
+      "mortified",
+      "despise myself",
+      "I'm disgusting",
+      "lack of self-confidence",
+      "shame"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "sometimes feel worthless",
+      "often feel inferior"
+    ],
+    "items": [
+      "Sometimes I feel completely worthless",
+      "I often feel inferior to others"
+    ],
+    "item_references": [
+      "NEO-FFI (NEO Five Factor Inventory) - 60 items_26",
+      "NEO-FFI (NEO Five Factor Inventory) - 60 items_6"
+    ]
+  },
+  "panic_panic_attacks": {
+    "definition": "Panic attack: An abrupt surge of intense fear or intense discomfort that reaches a peak within minutes and during which time four or more of the following symptoms occur: palpitations, pounding heart or accelerated heart rate, sweating, trembling or shaking, sensations of shortness of breath or smothering, feeling of choking, chest pain or discomfort, nausea or abdominal distress, feeling dizzy, unsteady, lightheaded, or faint, derealization (feelings of unreality) or depersonalization (being detached from oneself), fear of losing control or going crazy, fear of dying, paresthesias (numbness or tingling sensation), chills or hot flushes",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "fright",
+      "hyperventilating",
+      "mental breakdown",
+      "nervous breakdown",
+      "panic",
+      "panic attacks",
+      "panic dissociation",
+      "terror"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "panic",
+      "unrelenting dread, anguish, overwhelming panic"
+    ],
+    "items": [
+      "Panic",
+      "Unrelenting dread or anguish or overwhelming panic"
+    ],
+    "item_references": [
+      "CEQ (Challenging Experiences Questionnaire)_21",
+      "MADRS (Montgomery-Asberg Depression Rating Scale)_12"
+    ]
+  },
+  "entrapment_desire_to_escape": {
+    "definition": "Entrapment: desire to escape from an unbearable situation tied with the perception that all escape routes are blocked (Gilbert & Allan, 1998). Desire to escape: wish to escape from awareness of current life problems their implications about the self (Baumeister, 1990)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "escape",
+      "paralyzing",
+      "no escape",
+      "want to get out",
+      "there is no exit",
+      "want to escape",
+      "craving release",
+      "escape pain",
+      "have to escape",
+      "running out of options",
+      "there is no escape",
+      "caged",
+      "I want out",
+      "snare",
+      "entrap"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "trauma_post-traumatic_stress_disorder": {
+    "definition": "Psychological trauma is a type of damage to the mind that occurs as a result of a distressing event. It is often the result of an overwhelming amount of stress that exceeds one's ability to cope or integrate the emotions involved with that experience. Trauma can result from an event, series of events, or set of circumstances that is experienced by an individual as physically or emotionally harmful or life-threatening and that has lasting adverse effects on the individual's functioning and mental, physical, social, emotional, or spiritual well-being. Post-traumatic stress disorder: \"an event or events that involve actual or threatened death or serious injury, or a threat to the physical integrity of self and others and the person's response involved intense fear, helplessness, or horror\" with a diagnosis including either re-experiencing the traumatic event, avoidance and numbing, and increased arousal",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "C-PTSD",
+      "EMDR",
+      "PTSD",
+      "complex ptsd",
+      "post-traumatic stress disorder",
+      "ptsd",
+      "survivor's guilt",
+      "trauma-informed care"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "emotional_pain": {
+    "definition": "Feelings of mental pain, hurt, anguish, soreness, aching, psychological pain in the mind",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "anguish",
+      "emotional pain",
+      "emotional suffering",
+      "emotional trauma",
+      "inner pain",
+      "mental anguish",
+      "mental pain",
+      "psychache",
+      "psychological pain"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "emotional and physical suffering"
+    ],
+    "items": [
+      "Emotional and/or physical suffering"
+    ],
+    "item_references": [
+      "CEQ (Challenging Experiences Questionnaire)_25"
+    ]
+  },
+  "grief_bereavement": {
+    "definition": "Sadness from losing a loved one (grief) which may result in depressive symptoms (bereavement). This may also include losing a relationship or the health of a loved one.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "my grandfather died",
+      "my dad died",
+      "my father died",
+      "losing him",
+      "grief",
+      "my grandmother died",
+      "funerary",
+      "bereaving",
+      "put my dog down",
+      "widow",
+      "mourning",
+      "my sister died",
+      "passed away",
+      "he was murdered",
+      "brother died"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "feelings of grief"
+    ],
+    "items": [
+      "Feelings of grief"
+    ],
+    "item_references": [
+      "CEQ (Challenging Experiences Questionnaire)_6"
+    ]
+  },
+  "lack_of_meaning_or_life_purpose": {
+    "definition": "One's life lacks meaning, does not make sense, does not have purpose, or is insignificant",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I'm so lost",
+      "existential angst",
+      "without purpose",
+      "existential dread",
+      "no reason to live",
+      "don't care about life",
+      "life is purposeless",
+      "ennui",
+      "existential crisis",
+      "life is empty",
+      "I have no meaning",
+      "what's the point of life",
+      "life is pointless",
+      "nothing makes sense",
+      "there's no point to life"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "life is empty"
+    ],
+    "items": [
+      "I feel that life is empty or wonder if it's worth living"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_46"
+    ]
+  },
+  "emptiness": {
+    "definition": "The experience of profound hollowness and feelings of absence from one's own life.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I feel nothing",
+      "I feel numb",
+      "devoid",
+      "don't feel anything",
+      "emptiness",
+      "empty",
+      "feel nothing",
+      "hollow",
+      "inner void",
+      "nothingness",
+      "numb",
+      "numbness",
+      "void"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "life is empty",
+      "unbearable emptiness"
+    ],
+    "items": [
+      "I feel that life is empty or wonder if it's worth living",
+      "I experienced unbearable emptiness"
+    ],
+    "item_references": [
+      "QIDS (Quick Inventory of Depressive Symptomatology)_46",
+      "5D-ASC (Altered States of Consciousness)_53"
+    ]
+  },
+  "hopeless": {
+    "definition": "Generalized negative expectations of the future (McMillan 2007)",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I don't have a future",
+      "beyond help",
+      "can't be helped",
+      "doomed",
+      "futile",
+      "futureless",
+      "hopeless",
+      "hopelessness",
+      "it's useless",
+      "no end to this",
+      "no future",
+      "nothing can help",
+      "there's no hope"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [
+      "down, depressed, hopeless"
+    ],
+    "items": [
+      "Feeling down, depressed, or hopeless"
+    ],
+    "item_references": [
+      "PHQ-9_2"
+    ]
+  },
+  "perfectionism": {
+    "definition": "Self-oriented perfectionism refers to setting high personal standards and experiencing feelings of distress if failing to meet desired standards. Other-oriented perfectionism refers to having high expectations of others. Socially prescribed perfectionism refers to the expectations and beliefs that others expect perfectionism in one's performance",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "I expect a lot",
+      "absolute best",
+      "be perfect in everything I do",
+      "expect nothing less than",
+      "hate making mistakes",
+      "high standards",
+      "overachiever",
+      "perfectionism",
+      "succeed at everything",
+      "unrealistic expectations",
+      "workaholic"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "psychosis_schizophrenia": {
+    "definition": "Psychosis: A mental health condition characterized by a disconnection from reality, often involving hallucinations (seeing or hearing things that aren't there) and delusions (strongly held false beliefs). Schizophrenia: A chronic and severe mental disorder that affects how a person thinks, feels, and behaves, often marked by symptoms like psychosis (which involves hallucinations, delusions), but also disordered thinking, and impaired social functioning",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "circumstantiality",
+      "clang associations",
+      "clozapine",
+      "alogia",
+      "paranoia",
+      "logorrhea",
+      "psychosis",
+      "referential thinking",
+      "thought broadcast",
+      "I'm god",
+      "paranoid",
+      "tangentiality",
+      "olanzapine",
+      "schizophrenia",
+      "psychotic"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "mania_bipolar_disorder": {
+    "definition": "Bipolar disorder is a mental health condition that is marked by significant mood swings, which include periods of intense emotional highs, known as mania or hypomania, and lows, known as depression. During manic phases, individuals may feel overly happy and energetic or irritable, often with a decreased need for sleep and an increase in activity or impulsive behaviors. During depressive phases, individuals may feel sad, indifferent, or hopeless, with a lack of energy and difficulty in enjoying activities they once found pleasurable.",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "bipolar",
+      "hypomania",
+      "hypomanic",
+      "lamictal",
+      "lamotrigine",
+      "lithium",
+      "mania",
+      "manic",
+      "pressured speech",
+      "rapid cycling"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "eating_disorders_related_behaviors": {
+    "definition": "Eating disorders are mental health conditions characterized by unhealthy and obsessive behaviors related to food, eating, and body image. Common types include anorexia nervosa, bulimia nervosa, and binge-eating disorder",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "unhealthy weight",
+      "chew and spit",
+      "purging",
+      "body image",
+      "eating disorder",
+      "skip meals",
+      "binge eating",
+      "starvation",
+      "worry about weight",
+      "pica",
+      "anorexia",
+      "orthorexia",
+      "anorexia nervosa",
+      "not eating enough",
+      "bulimia"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "physical_health_symptoms_disorders": {
+    "definition": "Physical health issues refer to any condition or disorder that affects the body's normal functioning. These can range from acute illnesses like infections to chronic diseases such as diabetes or heart conditions as well as psychosomatic conditions.  Physical disability: physical impairments, functional limitations, and social activity restrictions stemming from the disability",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "hypertension",
+      "fracture",
+      "stroke",
+      "rash",
+      "virus",
+      "diabetes",
+      "erectile dysfunction",
+      "bronchitis",
+      "allergy",
+      "tumor",
+      "obesity",
+      "somatic",
+      "kidney stone",
+      "epilepsy",
+      "heart attack"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "gender_sexual_identity": {
+    "definition": "Gender identity refers to an individual's sense of their self as male, female, transgender, non-binary, genderfluid, agender, or something else. Gender identity is distinct from the cultural roles, behaviors, and attributes expected of women and men based on their sex assigned at birth. Sexual identity, also known as sexual orientation, refers to the pattern of romantic or sexual attraction to others. Common sexual identities include: heterosexual, homosexual, bisexual, pansexual, and asexual",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "cisnormativity",
+      "heterosexual",
+      "gay",
+      "women who have sex with women",
+      "polysexual",
+      "feminine",
+      "monosexual",
+      "transmasculine",
+      "agender",
+      "akiosexual",
+      "lgbtq",
+      "gender apathetic",
+      "multigender",
+      "aromantic",
+      "folx",
+      "FTM",
+      "gender binary"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "discrimination": {
+    "definition": "Discrimination is the unjust or prejudicial treatment of different categories of people, often based on characteristics like race, age, sex, ethnicity, nationality, gender, sexual orientation or disability. It involves actions or attitudes that disadvantage or harm individuals or groups, and can occur in various settings such as the workplace, education, or public services",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "gerontophobia",
+      "coon",
+      "ghetto",
+      "biphobia",
+      "hate speech",
+      "white trash",
+      "make america great again",
+      "faggot",
+      "Jim Crow",
+      "nazi",
+      "treated with less respect",
+      "gulag",
+      "colorism",
+      "transphobia",
+      "white power"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "financial_problems": {
+    "definition": "Problems related to managing money, earning a living, employment, or business activities, involving budgeting, spending, and investing",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "severance",
+      "finance",
+      "welfare",
+      "my credit",
+      "money",
+      "mortgage",
+      "layoff",
+      "make ends meet",
+      "rent",
+      "bad credit",
+      "currency",
+      "overwork",
+      "bankrupt",
+      "taxes",
+      "out of business"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "barriers_to_psychological_treatment": {
+    "definition": "Sociodemographic characteristics of the client impacting his or her ability to receive treatment",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "don't want to be hospitalized",
+      "can't get my medication",
+      "going rate is too high",
+      "don't want to be judged",
+      "don't need therapy",
+      "meds aren't helping",
+      "fear of judgment",
+      "I talk to friends instead",
+      "don't trust psychiatrists",
+      "no therapists in my area",
+      "haven't be referred yet",
+      "no appointments available",
+      "my insurance won't cover",
+      "deal with it on my own",
+      "don't want to go to the hospital"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "treatment": {
+    "definition": "Forms of commonly pursued pharmacological, psychotherapeutic, and behavioral mental health treatments",
+    "definition_reference": "Suicide lexicon",
+    "dimension_category": "Suicide lexicon",
+    "examples": [
+      "benzo",
+      "transcranial magnetic stimulation",
+      "Adderall",
+      "PCP",
+      "bibliotherapy",
+      "hospitalize",
+      "dosage",
+      "Lexapro",
+      "acceptance commitment therapy",
+      "biofeedback",
+      "psychiatr",
+      "escitalopram",
+      "peer support",
+      "meditation",
+      "at the ER"
+    ],
+    "examples_reference": "Suicide lexicon",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  }, 
+  "excited": {
+    "definition": "Measures feelings of excitement, enthusiasm, and energetic arousal",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "PANAS",
+    "examples": [
+      "I'm so excited",
+      "I feel enthusiastic",
+      "I'm pumped up",
+      "I'm full of energy",
+      "I can't wait"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": [
+      "PANAS (Positive and Negative Affect Schedule)"
+    ]
+  },
+  "angry": {
+    "definition": "Measures feelings of anger, irritation, and hostile affect",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "PANAS",
+    "examples": [
+      "I'm angry",
+      "I feel irritated",
+      "I'm mad",
+      "I'm furious",
+      "I'm pissed off"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": [
+      "PANAS (Positive and Negative Affect Schedule)"
+    ]
+  },
+  "afraid": {
+    "definition": "Measures feelings of fear, apprehension, and fearful affect",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "PANAS",
+    "examples": [
+      "I'm afraid",
+      "I feel scared",
+      "I'm fearful",
+      "I'm worried something bad will happen",
+      "I feel anxious"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],     
+    "items": [],
+    "item_references": [
+      "PANAS (Positive and Negative Affect Schedule)"
+    ]
+  },
+  "proud": {
+    "definition": "Measures feelings of pride, self-worth, and positive self-regard",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "PANAS",
+    "examples": [
+      "I'm proud of myself",
+      "I feel accomplished",
+      "I'm satisfied with what I've done",
+      "I feel worthy",
+      "I did well"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": [
+      "PANAS (Positive and Negative Affect Schedule)"
+    ]
+  },
+  "alert": {
+    "definition": "Measures feelings of alertness, attentiveness, and wakeful awareness",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "PANAS",
+    "examples": [
+      "I'm alert",
+      "I feel awake",
+      "I'm attentive",
+      "I'm focused and aware",
+      "I'm sharp"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": [
+      "PANAS (Positive and Negative Affect Schedule)"
+    ]
+  },
+  "hallucination": {
+    "definition": "Measures hallucinations, including visual and auditory perceptions of things that are not present in external reality. Visual hallucinations may include seeing patterns, shapes, colors, or entities that don't exist, while auditory hallucinations involve hearing sounds, voices, or music that aren't there.",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Psychedelic/contemplative science",
+    "examples": [
+      "I saw things that were not there",
+      "I was hallucinating",
+      "I saw patterns on the walls",
+      "I heard voices",
+      "I saw colors and shapes that weren't real",
+      "The walls were breathing",
+      "I heard music that wasn't playing",
+      "I got visuals",
+      "Things were moving that shouldn't be",
+      "The visuals were unlike anything I've ever seen"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "belief_delusions": {
+    "definition": "Measures unusual or false beliefs and delusional thinking, including beliefs about special powers, messages from the universe, paranoid thoughts, or convictions that feel profoundly true but may not align with consensus reality.",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Taxonomy of Altered States (Cardena et al., 2025)",
+    "examples": [
+      "I thought I had special powers",
+      "I believed the universe was sending me messages",
+      "I was convinced I could read minds",
+      "I thought people were plotting against me",
+      "I believed I had discovered the meaning of everything",
+      "I was certain I was being watched",
+      "I thought I could control things with my mind",
+      "I believed I was communicating with entities",
+      "I was convinced this was more real than reality",
+      "I thought I had unlocked secret knowledge"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "out_of_body_experience": {
+    "definition": "Measures out-of-body experiences where one perceives themselves as separate from or outside their physical body, including sensations of floating, viewing oneself from an external perspective, or feeling disembodied.",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Taxonomy of Altered States (Cardena et al., 2025)",
+    "examples": [
+      "I felt like I left my body",
+      "I was floating above myself",
+      "I could see myself from outside",
+      "I felt separated from my physical body",
+      "I was looking down at my body",
+      "I felt disembodied",
+      "I had an out-of-body experience",
+      "I was hovering above the room",
+      "My consciousness felt separate from my body",
+      "I observed myself from a distance"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  },
+  "ego_dissolution": {
+    "definition": "Measures the dissolution or loss of the sense of self and ego boundaries, including experiences of self-transcendence, loss of personal identity, merging with the environment, and the temporary dissolution of the distinction between self and other.",
+    "definition_reference": "Claude Sonnet 4.5",
+    "dimension_category": "Taxonomy of Altered States (Cardena et al., 2025)",
+    "examples": [
+      "I lost my sense of self",
+      "My ego dissolved",
+      "I forgot who I was",
+      "The boundaries between me and everything else disappeared",
+      "I experienced ego death",
+      "I merged with everything around me",
+      "My identity completely dissolved",
+      "I had no sense of being a separate person",
+      "The self vanished",
+      "I transcended my ego"
+    ],
+    "examples_reference": "Claude Sonnet 4.5",
+    "items_simplified": [],
+    "items": [],
+    "item_references": []
+  }
+}
