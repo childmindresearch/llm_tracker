@@ -3,34 +3,44 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from typing import Callable, Optional
 
 from pychometrics.config import AnalyzerConfig
 from pychometrics.prompting import PromptingError, call_llm_api
 
 
-MATCH_PROMPT_TEMPLATE = """You are comparing two quotes for the SAME psychological construct.
+MATCH_PROMPT_TEMPLATE = """You are reconciling two sets of quotes for the SAME \
+psychological construct, coded independently by a human and an LLM.
 
-Construct:
-{construct}
+Construct: {construct}
 
-Human-coded quote:
-{human_quote}
+Human-coded quotes (0-indexed):
+{human_quotes}
 
-LLM-coded quote:
-{llm_quote}
+LLM-coded quotes (0-indexed):
+{llm_quotes}
 
 Task:
-Decide if these quotes refer to the SAME passage or substantially the SAME idea.
-Return ONLY valid JSON in this format:
+Match each LLM quote to a human quote if they refer to the same passage or idea.
+Each quote can only be matched once.
+A match is valid even if the wording differs (paraphrase), as long as both quotes
+refer to the same content.
+
+Return ONLY valid JSON in this exact format:
 {{
-  "match": true | false,
-  "match_confidence": <float between 0.0 and 1.0>
+  "matches": [
+    {{
+      "human_index": <int>,
+      "llm_index": <int>,
+      "paraphrase": <true if wording differs meaningfully, false if nearly identical>,
+      "match_confidence": <float between 0.0 and 1.0>
+    }}
+  ]
 }}
+
+If there are no matches, return {{"matches": []}}
 """
 
 
@@ -40,25 +50,18 @@ class ComparisonError(Exception):
     pass
 
 
-@dataclass
-class QuoteMatchDecision:
-    match: bool
-    method: str
-    match_confidence: Optional[float] = None
-
-
 def _strip_code_fences(text: str) -> str:
     cleaned = text.strip()
     if cleaned.startswith("```"):
         first_newline = cleaned.find("\n")
         if first_newline != -1:
-            cleaned = cleaned[first_newline + 1 :]
+            cleaned = cleaned[first_newline + 1:]
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3]
     return cleaned.strip()
 
 
-def _extract_first_json_object(text: str) -> Optional[str]:
+def _extract_first_json_object(text: str) -> str | None:
     start = text.find("{")
     if start == -1:
         return None
@@ -84,12 +87,46 @@ def _extract_first_json_object(text: str) -> Optional[str]:
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    return text[start : idx + 1]
+                    return text[start: idx + 1]
 
     return None
 
 
-def _parse_match_response(response_text: str) -> QuoteMatchDecision:
+def _compute_span_overlap(
+    human_idx: str | None, llm_idx: str | None
+) -> float | None:
+    """Compute Jaccard overlap between two character-index spans ('start:end' format)."""
+    if not human_idx or not llm_idx:
+        return None
+    try:
+        h_start, h_end = map(int, human_idx.split(":"))
+        l_start, l_end = map(int, llm_idx.split(":"))
+    except (ValueError, AttributeError):
+        return None
+
+    human_chars = set(range(h_start, h_end))
+    llm_chars = set(range(l_start, l_end))
+
+    if not human_chars and not llm_chars:
+        return 1.0
+    if not human_chars or not llm_chars:
+        return 0.0
+
+    intersection = len(human_chars & llm_chars)
+    union = len(human_chars | llm_chars)
+    return intersection / union if union > 0 else 0.0
+
+
+def _format_quotes_for_prompt(quotes: list[dict]) -> str:
+    lines = []
+    for i, q in enumerate(quotes):
+        quote_text = q.get("quote", "")
+        indices = q.get("quote_index", "N/A")
+        lines.append(f'{i}. "{quote_text}" (indices: {indices})')
+    return "\n".join(lines)
+
+
+def _parse_construct_match_response(response_text: str) -> list[dict]:
     if response_text is None:
         raise ComparisonError("Empty response from LLM matcher.")
 
@@ -97,33 +134,48 @@ def _parse_match_response(response_text: str) -> QuoteMatchDecision:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        extracted = _extract_first_json_object(cleaned) or _extract_first_json_object(
-            response_text
+        extracted = (
+            _extract_first_json_object(cleaned)
+            or _extract_first_json_object(response_text)
         )
         if not extracted:
             raise ComparisonError("No valid JSON object found in matcher response.")
         data = json.loads(extracted)
 
-    if not isinstance(data, dict) or "match" not in data:
-        raise ComparisonError("Matcher response JSON must include a 'match' field.")
+    if not isinstance(data, dict) or "matches" not in data:
+        raise ComparisonError("Matcher response must include a 'matches' field.")
 
-    match = bool(data.get("match"))
-    raw_confidence = data.get("match_confidence", 1.0 if match else 0.0)
+    matches = data["matches"]
+    if not isinstance(matches, list):
+        raise ComparisonError("'matches' must be a list.")
 
-    try:
-        confidence = float(raw_confidence)
-    except (TypeError, ValueError):
-        confidence = 1.0 if match else 0.0
+    result = []
+    for m in matches:
+        if not isinstance(m, dict):
+            continue
+        if "human_index" not in m or "llm_index" not in m:
+            continue
+        try:
+            human_index = int(m["human_index"])
+            llm_index = int(m["llm_index"])
+        except (ValueError, TypeError):
+            continue
 
-    confidence = max(0.0, min(1.0, confidence))
+        paraphrase = bool(m.get("paraphrase", False))
+        try:
+            confidence = float(m.get("match_confidence", 0.5))
+        except (ValueError, TypeError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
 
-    return QuoteMatchDecision(match=match, method="llm", match_confidence=confidence)
+        result.append({
+            "human_index": human_index,
+            "llm_index": llm_index,
+            "paraphrase": paraphrase,
+            "match_confidence": confidence,
+        })
 
-
-def _build_match_prompt(construct: str, human_quote: str, llm_quote: str) -> str:
-    return MATCH_PROMPT_TEMPLATE.format(
-        construct=construct, human_quote=human_quote, llm_quote=llm_quote
-    )
+    return result
 
 
 def _load_result_json(path: Path | str) -> dict:
@@ -146,7 +198,8 @@ def _group_by_construct(instances: list[dict]) -> dict[str, list[dict]]:
 
 
 def _create_comparison_output_directory(
-    output_name: Optional[str] = None, base_dir: Optional[Path | str] = None
+    output_name: str | None = None,
+    base_dir: Path | str | None = None,
 ) -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     dir_name = (
@@ -171,7 +224,7 @@ def _truncate(text: str, max_len: int) -> str:
 def format_comparison_table(
     result: dict,
     *,
-    max_quote_length: Optional[int] = None,
+    max_quote_length: int | None = None,
 ) -> "pd.DataFrame":
     """Build a row-level comparison dataframe from compare_documents() output.
 
@@ -181,8 +234,9 @@ def format_comparison_table(
 
     Returns:
         pandas DataFrame with one row per matched/human_only/llm_only item.
+        Columns: doc_id, construct, status, human_quote, llm_quote,
+                 human_indices, llm_indices, paraphrase, span_overlap, match_confidence.
     """
-
     rows: list[dict] = []
     comparisons = result.get("comparisons", [])
     document_id = str(result.get("document_id", "unknown_document"))
@@ -191,64 +245,69 @@ def format_comparison_table(
         construct = str(block.get("construct", "Unknown"))
 
         for match in block.get("matched", []):
-            row = {
-                "document_id": document_id,
+            human_quote = str(match.get("human_quote", ""))
+            llm_quote = str(match.get("llm_quote", ""))
+            if max_quote_length is not None:
+                human_quote = _truncate(human_quote, max_quote_length)
+                llm_quote = _truncate(llm_quote, max_quote_length)
+            rows.append({
+                "doc_id": document_id,
                 "construct": construct,
                 "status": "matched",
-                "method": str(match.get("match_method", "")),
-                "human_confidence": match.get("human_confidence"),
-                "llm_confidence": match.get("llm_confidence"),
+                "human_quote": human_quote,
+                "llm_quote": llm_quote,
+                "human_indices": match.get("human_indices"),
+                "llm_indices": match.get("llm_indices"),
+                "paraphrase": match.get("paraphrase"),
+                "span_overlap": match.get("span_overlap"),
                 "match_confidence": match.get("match_confidence"),
-                "human_quote": str(match.get("human_quote", "")),
-                "llm_quote": str(match.get("llm_quote", "")),
-            }
-            if max_quote_length is not None:
-                row["human_quote"] = _truncate(row["human_quote"], max_quote_length)
-                row["llm_quote"] = _truncate(row["llm_quote"], max_quote_length)
-            rows.append(row)
+            })
 
         for item in block.get("human_only", []):
-            row = {
-                "document_id": document_id,
+            quote = str(item.get("quote", ""))
+            if max_quote_length is not None:
+                quote = _truncate(quote, max_quote_length)
+            rows.append({
+                "doc_id": document_id,
                 "construct": construct,
                 "status": "human_only",
-                "method": "",
-                "human_confidence": item.get("human_confidence"),
-                "llm_confidence": item.get("llm_confidence"),
+                "human_quote": quote,
+                "llm_quote": None,
+                "human_indices": item.get("indices"),
+                "llm_indices": None,
+                "paraphrase": None,
+                "span_overlap": None,
                 "match_confidence": None,
-                "human_quote": str(item.get("quote", "")),
-                "llm_quote": "",
-            }
-            if max_quote_length is not None:
-                row["human_quote"] = _truncate(row["human_quote"], max_quote_length)
-            rows.append(row)
+            })
 
         for item in block.get("llm_only", []):
-            row = {
-                "document_id": document_id,
+            quote = str(item.get("quote", ""))
+            if max_quote_length is not None:
+                quote = _truncate(quote, max_quote_length)
+            rows.append({
+                "doc_id": document_id,
                 "construct": construct,
                 "status": "llm_only",
-                "method": "",
-                "human_confidence": item.get("human_confidence"),
-                "llm_confidence": item.get("llm_confidence"),
+                "human_quote": None,
+                "llm_quote": quote,
+                "human_indices": None,
+                "llm_indices": item.get("indices"),
+                "paraphrase": None,
+                "span_overlap": None,
                 "match_confidence": None,
-                "human_quote": "",
-                "llm_quote": str(item.get("quote", "")),
-            }
-            if max_quote_length is not None:
-                row["llm_quote"] = _truncate(row["llm_quote"], max_quote_length)
-            rows.append(row)
+            })
 
     columns = [
-        "document_id",
+        "doc_id",
         "construct",
         "status",
-        "method",
-        "human_confidence",
-        "llm_confidence",
-        "match_confidence",
         "human_quote",
         "llm_quote",
+        "human_indices",
+        "llm_indices",
+        "paraphrase",
+        "span_overlap",
+        "match_confidence",
     ]
 
     return pd.DataFrame(rows, columns=columns)
@@ -259,16 +318,10 @@ class PychometricsComparator:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        match_model: Optional[str] = None,
-        config: Optional[AnalyzerConfig] = None,
-        match_fn: Optional[Callable[[str, dict, dict], QuoteMatchDecision]] = None,
+        api_key: str | None = None,
+        match_model: str | None = None,
+        config: AnalyzerConfig | None = None,
     ) -> None:
-        if match_fn is not None:
-            self.match_fn = match_fn
-        else:
-            self.match_fn = None
-
         if config is not None:
             self.config = config
         else:
@@ -277,20 +330,25 @@ class PychometricsComparator:
             else:
                 self.config = AnalyzerConfig(api_key=api_key)
 
-    def _llm_match(self, construct: str, human: dict, llm: dict) -> QuoteMatchDecision:
-        prompt = _build_match_prompt(
-            construct, human.get("quote", ""), llm.get("quote", "")
+    def _llm_match_construct(
+        self, construct: str, human_list: list[dict], llm_list: list[dict]
+    ) -> list[dict]:
+        """Make one LLM call for all quotes in a construct group and return match decisions."""
+        prompt = MATCH_PROMPT_TEMPLATE.format(
+            construct=construct,
+            human_quotes=_format_quotes_for_prompt(human_list),
+            llm_quotes=_format_quotes_for_prompt(llm_list),
         )
 
         attempts = 0
         max_attempts = self.config.max_retries + 1
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         while attempts < max_attempts:
             attempts += 1
             try:
-                response_text, _metadata = call_llm_api(prompt, self.config)
-                return _parse_match_response(response_text)
+                response_text, _ = call_llm_api(prompt, self.config)
+                return _parse_construct_match_response(response_text)
             except (PromptingError, ComparisonError, json.JSONDecodeError) as e:
                 last_error = e
                 if attempts >= max_attempts:
@@ -299,13 +357,6 @@ class PychometricsComparator:
         raise ComparisonError(
             f"Matcher failed after {max_attempts} attempts: {last_error}"
         )
-
-    def _match_quotes(
-        self, construct: str, human: dict, llm: dict
-    ) -> QuoteMatchDecision:
-        if self.match_fn is not None:
-            return self.match_fn(construct, human, llm)
-        return self._llm_match(construct, human, llm)
 
     def _compare_instances(
         self, human_instances: list[dict], llm_instances: list[dict]
@@ -323,88 +374,105 @@ class PychometricsComparator:
             human_only: list[dict] = []
             llm_only: list[dict] = []
 
-            used_llm_indices: set[int] = set()
-
-            for h in list(human_list):
-                for idx, l in enumerate(llm_list):
-                    if idx in used_llm_indices:
-                        continue
-                    if h.get("quote") == l.get("quote"):
-                        matched.append(
-                            {
-                                "construct": construct,
-                                "human_quote": h.get("quote"),
-                                "llm_quote": l.get("quote"),
-                                "human_confidence": h.get("confidence"),
-                                "llm_confidence": l.get("confidence"),
-                                "match": True,
-                                "match_method": "exact",
-                                "match_confidence": 1.0,
-                            }
-                        )
-                        used_llm_indices.add(idx)
-                        human_list.remove(h)
-                        break
-
-            for h in human_list:
-                found = False
-                for idx, l in enumerate(llm_list):
-                    if idx in used_llm_indices:
-                        continue
-                    decision = self._match_quotes(construct, h, l)
-                    if decision.match:
-                        match_confidence = (
-                            decision.match_confidence
-                            if decision.match_confidence is not None
-                            else 0.5
-                        )
-                        matched.append(
-                            {
-                                "construct": construct,
-                                "human_quote": h.get("quote"),
-                                "llm_quote": l.get("quote"),
-                                "human_confidence": h.get("confidence"),
-                                "llm_confidence": l.get("confidence"),
-                                "match": True,
-                                "match_method": decision.method,
-                                "match_confidence": match_confidence,
-                            }
-                        )
-                        used_llm_indices.add(idx)
-                        found = True
-                        break
-                if not found:
-                    human_only.append(
-                        {
-                            "construct": construct,
-                            "quote": h.get("quote"),
-                            "speaker_id": h.get("speaker_id"),
-                            "human_confidence": h.get("confidence"),
-                            "llm_confidence": None,
-                        }
-                    )
-
-            for idx, l in enumerate(llm_list):
-                if idx in used_llm_indices:
-                    continue
-                llm_only.append(
-                    {
+            # If one side is empty, everything is unmatched
+            if not human_list:
+                for llm_item in llm_list:
+                    llm_only.append({
                         "construct": construct,
-                        "quote": l.get("quote"),
-                        "speaker_id": l.get("speaker_id"),
-                        "human_confidence": None,
-                        "llm_confidence": l.get("confidence"),
-                    }
-                )
-
-            comparisons.append(
-                {
+                        "quote": llm_item.get("quote"),
+                        "indices": llm_item.get("quote_index"),
+                        "confidence": llm_item.get("confidence"),
+                    })
+                comparisons.append({
                     "construct": construct,
                     "matched": matched,
                     "human_only": human_only,
                     "llm_only": llm_only,
-                }
-            )
+                })
+                continue
+
+            if not llm_list:
+                for h in human_list:
+                    human_only.append({
+                        "construct": construct,
+                        "quote": h.get("quote"),
+                        "indices": h.get("quote_index"),
+                        "confidence": h.get("confidence"),
+                    })
+                comparisons.append({
+                    "construct": construct,
+                    "matched": matched,
+                    "human_only": human_only,
+                    "llm_only": llm_only,
+                })
+                continue
+
+            # One LLM call for all quotes in this construct
+            try:
+                match_decisions = self._llm_match_construct(
+                    construct, human_list, llm_list
+                )
+            except ComparisonError:
+                match_decisions = []
+
+            used_human: set[int] = set()
+            used_llm: set[int] = set()
+
+            for decision in match_decisions:
+                h_idx = decision["human_index"]
+                l_idx = decision["llm_index"]
+
+                if h_idx < 0 or h_idx >= len(human_list):
+                    continue
+                if l_idx < 0 or l_idx >= len(llm_list):
+                    continue
+                if h_idx in used_human or l_idx in used_llm:
+                    continue
+
+                h = human_list[h_idx]
+                llm_item = llm_list[l_idx]
+
+                matched.append({
+                    "construct": construct,
+                    "human_quote": h.get("quote"),
+                    "llm_quote": llm_item.get("quote"),
+                    "human_indices": h.get("quote_index"),
+                    "llm_indices": llm_item.get("quote_index"),
+                    "human_confidence": h.get("confidence"),
+                    "llm_confidence": llm_item.get("confidence"),
+                    "paraphrase": decision["paraphrase"],
+                    "span_overlap": _compute_span_overlap(
+                        h.get("quote_index"), llm_item.get("quote_index")
+                    ),
+                    "match_confidence": decision["match_confidence"],
+                })
+                used_human.add(h_idx)
+                used_llm.add(l_idx)
+
+            for i, h in enumerate(human_list):
+                if i not in used_human:
+                    human_only.append({
+                        "construct": construct,
+                        "quote": h.get("quote"),
+                        "indices": h.get("quote_index"),
+                        "confidence": h.get("confidence"),
+                    })
+
+            for i, llm_item in enumerate(llm_list):
+                if i not in used_llm:
+                    llm_only.append({
+                        "construct": construct,
+                        "quote": llm_item.get("quote"),
+                        "indices": llm_item.get("quote_index"),
+                        "confidence": llm_item.get("confidence"),
+                    })
+
+            comparisons.append({
+                "construct": construct,
+                "matched": matched,
+                "human_only": human_only,
+                "llm_only": llm_only,
+            })
 
         return comparisons
 
@@ -412,7 +480,7 @@ class PychometricsComparator:
         self,
         human_json: Path | str,
         llm_json: Path | str,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
     ) -> dict:
         human_data = _load_result_json(human_json)
         llm_data = _load_result_json(llm_json)
@@ -443,7 +511,7 @@ class PychometricsComparator:
         self,
         human_dir: Path | str,
         llm_dir: Path | str,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
     ) -> dict[str, dict]:
         human_path = Path(human_dir)
         llm_path = Path(llm_dir)
@@ -459,7 +527,7 @@ class PychometricsComparator:
 
         results: dict[str, dict] = {}
 
-        output_path: Optional[Path] = None
+        output_path: Path | None = None
         if output_dir:
             output_path = _create_comparison_output_directory(
                 output_name=output_dir, base_dir=Path.cwd()

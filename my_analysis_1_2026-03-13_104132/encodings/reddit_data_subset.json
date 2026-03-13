@@ -1,0 +1,124 @@
+{
+  "document_id": "reddit_data_subset",
+  "instances": [
+    {
+      "construct": "anxiety",
+      "speaker_id": "6269",
+      "quote": "Anxiety",
+      "quote_index": "97:104",
+      "confidence": 2
+    },
+    {
+      "construct": "anxiety",
+      "speaker_id": "7249",
+      "quote": "Anxiety",
+      "quote_index": "97:104",
+      "confidence": 2
+    },
+    {
+      "construct": "anxiety",
+      "speaker_id": "6992",
+      "quote": "Anxiety",
+      "quote_index": "97:104",
+      "confidence": 2
+    },
+    {
+      "construct": "depressed_mood",
+      "speaker_id": "11593",
+      "quote": "Depression",
+      "quote_index": "3564:3574",
+      "confidence": 2
+    },
+    {
+      "construct": "suicidal_ideation",
+      "speaker_id": "11593",
+      "quote": "Suicidal",
+      "quote_index": "3575:3583",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "11593",
+      "quote": "Fluoxetine",
+      "quote_index": "3589:3599",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "11593",
+      "quote": "Olanzapine",
+      "quote_index": "3600:3610",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "11593",
+      "quote": "Concerta",
+      "quote_index": "3611:3619",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "11593",
+      "quote": "Ritalin",
+      "quote_index": "3620:3627",
+      "confidence": 2
+    },
+    {
+      "construct": "kinship",
+      "speaker_id": "11720",
+      "quote": "Daughter",
+      "quote_index": "2913:2921",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "6452",
+      "quote": "Clomipramine",
+      "quote_index": "2451:2463",
+      "confidence": 2
+    },
+    {
+      "construct": "treatment",
+      "speaker_id": "6607",
+      "quote": "Celexa",
+      "quote_index": "4484:4490",
+      "confidence": 2
+    },
+    {
+      "construct": "psychosis_schizophrenia",
+      "speaker_id": "11593",
+      "quote": "Olanzapine",
+      "quote_index": "3600:3610",
+      "confidence": 2
+    },
+    {
+      "construct": "mania_bipolar_disorder",
+      "speaker_id": "6339",
+      "quote": "bipolar",
+      "quote_index": "5616:5623",
+      "confidence": 2
+    },
+    {
+      "construct": "guilt",
+      "speaker_id": "11715",
+      "quote": "Sorry",
+      "quote_index": "736:741",
+      "confidence": 1
+    },
+    {
+      "construct": "worry",
+      "speaker_id": "7005",
+      "quote": "Worry",
+      "quote_index": "3002:3007",
+      "confidence": 2
+    },
+    {
+      "construct": "worry",
+      "speaker_id": "6920",
+      "quote": "Worried",
+      "quote_index": "4756:4763",
+      "confidence": 2
+    }
+  ]
+}

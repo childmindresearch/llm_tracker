@@ -1,0 +1,87 @@
+{
+  "model": "google/gemini-3-flash-preview-20251217",
+  "usage": {
+    "prompt_tokens": 25600,
+    "completion_tokens": 1024,
+    "total_tokens": 26624,
+    "cost": 0.0048263,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 24546,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0048263,
+      "upstream_inference_prompt_cost": 0.0017543,
+      "upstream_inference_completions_cost": 0.003072
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "created": 1773412898,
+  "response_id": "gen-1773412898-bCXj3pEqFVsVvNhuvFd2",
+  "latency_ms": 7123.795986175537,
+  "raw_response": {
+    "id": "gen-1773412898-bCXj3pEqFVsVvNhuvFd2",
+    "object": "chat.completion",
+    "created": 1773412898,
+    "model": "google/gemini-3-flash-preview-20251217",
+    "provider": "Google",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "native_finish_reason": "STOP",
+        "message": {
+          "role": "assistant",
+          "content": "{\n    \"instances\": [\n        {\n            \"construct\": \"anxiety\",\n            \"speaker_id\": \"6269\",\n            \"quote\": \"Anxiety\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"anxiety\",\n            \"speaker_id\": \"7249\",\n            \"quote\": \"Anxiety\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"anxiety\",\n            \"speaker_id\": \"6992\",\n            \"quote\": \"Anxiety\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"anxiety\",\n            \"speaker_id\": \"6850\",\n            \"quote\": \"anxious\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"depressed_mood\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Depression\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"depressed_mood\",\n            \"speaker_id\": \"11812\",\n            \"quote\": \"depression\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"suicidal_ideation\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Suicidal\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"suicidal_ideation\",\n            \"speaker_id\": \"11823\",\n            \"quote\": \"Sucidal\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"guilt\",\n            \"speaker_id\": \"11715\",\n            \"quote\": \"Sorry\",\n            \"confidence\": 1\n        },\n        {\n            \"construct\": \"kinship\",\n            \"speaker_id\": \"11720\",\n            \"quote\": \"Daughter\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"lack_of_meaning_or_life_purpose\",\n            \"speaker_id\": \"12146\",\n            \"quote\": \"Existential\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"11692\",\n            \"quote\": \"Meds\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Fluoxetine\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Olanzapine\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Concerta\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Ritalin\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"6452\",\n            \"quote\": \"Clomipramine\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"treatment\",\n            \"speaker_id\": \"6607\",\n            \"quote\": \"Celexa\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"psychosis_schizophrenia\",\n            \"speaker_id\": \"11593\",\n            \"quote\": \"Olanzapine\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"mania_bipolar_disorder\",\n            \"speaker_id\": \"6339\",\n            \"quote\": \"bipolar\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"lonely_isolated\",\n            \"speaker_id\": \"12194\",\n            \"quote\": \"Alienated.\",\n            \"confidence\": 2\n        },\n        {\n            \"construct\": \"lonely_isolated\",\n            \"speaker_id\": \"11484\",\n            \"quote\": \"Ignored\",\n            \"confidence\": 2\n        }\n    ]\n}",
+          "refusal": null,
+          "reasoning": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.encrypted",
+              "data": "CiEBjz1rX5NhrrwzKHQZRsvhrOq9+Xc2ZwYX7WNE4S2FSxs=",
+              "format": "google-gemini-v1",
+              "index": 0
+            }
+          ]
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 25600,
+      "completion_tokens": 1024,
+      "total_tokens": 26624,
+      "cost": 0.0048263,
+      "is_byok": false,
+      "prompt_tokens_details": {
+        "cached_tokens": 24546,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost_details": {
+        "upstream_inference_cost": 0.0048263,
+        "upstream_inference_prompt_cost": 0.0017543,
+        "upstream_inference_completions_cost": 0.003072
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+      }
+    }
+  },
+  "num_retries": 0,
+  "output_repaired": false,
+  "error_message": null,
+  "error_type": null,
+  "error_output": null
+}

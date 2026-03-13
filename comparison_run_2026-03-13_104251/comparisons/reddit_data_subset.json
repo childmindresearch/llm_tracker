@@ -1,0 +1,324 @@
+{
+  "document_id": "reddit_data_subset",
+  "comparisons": [
+    {
+      "construct": "anxiety",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        },
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        },
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        },
+        {
+          "construct": "anxiety",
+          "quote": "anxious",
+          "indices": "2644:2651",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        },
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        },
+        {
+          "construct": "anxiety",
+          "quote": "Anxiety",
+          "indices": "97:104",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "depressed_mood",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "depressed_mood",
+          "quote": "Depression",
+          "indices": "3564:3574",
+          "confidence": 2
+        },
+        {
+          "construct": "depressed_mood",
+          "quote": "depression",
+          "indices": "2142:2152",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "depressed_mood",
+          "quote": "Depression",
+          "indices": "3564:3574",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "guilt",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "guilt",
+          "quote": "Sorry",
+          "indices": "736:741",
+          "confidence": 1
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "guilt",
+          "quote": "Sorry",
+          "indices": "736:741",
+          "confidence": 1
+        }
+      ]
+    },
+    {
+      "construct": "kinship",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "kinship",
+          "quote": "Daughter",
+          "indices": "2913:2921",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "kinship",
+          "quote": "Daughter",
+          "indices": "2913:2921",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "lack_of_meaning_or_life_purpose",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "lack_of_meaning_or_life_purpose",
+          "quote": "Existential",
+          "indices": "759:770",
+          "confidence": 2
+        }
+      ],
+      "llm_only": []
+    },
+    {
+      "construct": "lonely_isolated",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "lonely_isolated",
+          "quote": "Alienated.",
+          "indices": "812:822",
+          "confidence": 2
+        },
+        {
+          "construct": "lonely_isolated",
+          "quote": "Ignored",
+          "indices": "586:593",
+          "confidence": 2
+        }
+      ],
+      "llm_only": []
+    },
+    {
+      "construct": "mania_bipolar_disorder",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "mania_bipolar_disorder",
+          "quote": "bipolar",
+          "indices": "5616:5623",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "mania_bipolar_disorder",
+          "quote": "bipolar",
+          "indices": "5616:5623",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "psychosis_schizophrenia",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "psychosis_schizophrenia",
+          "quote": "Olanzapine",
+          "indices": "3600:3610",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "psychosis_schizophrenia",
+          "quote": "Olanzapine",
+          "indices": "3600:3610",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "suicidal_ideation",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "suicidal_ideation",
+          "quote": "Suicidal",
+          "indices": "3575:3583",
+          "confidence": 2
+        },
+        {
+          "construct": "suicidal_ideation",
+          "quote": "Sucidal",
+          "indices": "1579:1586",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "suicidal_ideation",
+          "quote": "Suicidal",
+          "indices": "3575:3583",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "treatment",
+      "matched": [],
+      "human_only": [
+        {
+          "construct": "treatment",
+          "quote": "Meds",
+          "indices": "2012:2016",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Fluoxetine",
+          "indices": "3589:3599",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Olanzapine",
+          "indices": "3600:3610",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Concerta",
+          "indices": "3611:3619",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Ritalin",
+          "indices": "3620:3627",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Clomipramine",
+          "indices": "2451:2463",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Celexa",
+          "indices": "4484:4490",
+          "confidence": 2
+        }
+      ],
+      "llm_only": [
+        {
+          "construct": "treatment",
+          "quote": "Fluoxetine",
+          "indices": "3589:3599",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Olanzapine",
+          "indices": "3600:3610",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Concerta",
+          "indices": "3611:3619",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Ritalin",
+          "indices": "3620:3627",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Clomipramine",
+          "indices": "2451:2463",
+          "confidence": 2
+        },
+        {
+          "construct": "treatment",
+          "quote": "Celexa",
+          "indices": "4484:4490",
+          "confidence": 2
+        }
+      ]
+    },
+    {
+      "construct": "worry",
+      "matched": [],
+      "human_only": [],
+      "llm_only": [
+        {
+          "construct": "worry",
+          "quote": "Worry",
+          "indices": "3002:3007",
+          "confidence": 2
+        },
+        {
+          "construct": "worry",
+          "quote": "Worried",
+          "indices": "4756:4763",
+          "confidence": 2
+        }
+      ]
+    }
+  ]
+}
