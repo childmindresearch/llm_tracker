@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+import numpy as np
 import pandas as pd
 
 from pychometrics.config import AnalyzerConfig
@@ -261,6 +262,9 @@ def format_comparison_table(
                 "paraphrase": match.get("paraphrase"),
                 "span_overlap": match.get("span_overlap"),
                 "match_confidence": match.get("match_confidence"),
+                "tp": 1,
+                "fp": 0,
+                "fn": 0,
             })
 
         for item in block.get("human_only", []):
@@ -278,6 +282,9 @@ def format_comparison_table(
                 "paraphrase": None,
                 "span_overlap": None,
                 "match_confidence": None,
+                "tp": 0,
+                "fp": 0,
+                "fn": 1,
             })
 
         for item in block.get("llm_only", []):
@@ -295,6 +302,9 @@ def format_comparison_table(
                 "paraphrase": None,
                 "span_overlap": None,
                 "match_confidence": None,
+                "tp": 0,
+                "fp": 1,
+                "fn": 0,
             })
 
     columns = [
@@ -308,9 +318,184 @@ def format_comparison_table(
         "paraphrase",
         "span_overlap",
         "match_confidence",
+        "tp",
+        "fp",
+        "fn",
     ]
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def _safe_divide(numerator: float, denominator: float) -> float | None:
+    return numerator / denominator if denominator > 0 else None
+
+
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    """Return the weighted median of values, weighted by weights."""
+    pairs = sorted(zip(values, weights), key=lambda x: x[0])
+    total = sum(w for _, w in pairs)
+    cumulative = 0.0
+    for val, w in pairs:
+        cumulative += w
+        if cumulative >= total / 2:
+            return val
+    return pairs[-1][0]
+
+
+def _metrics_from_counts(tp: float, fp: float, fn: float) -> dict:
+    union = tp + fp + fn
+    return {
+        "tp": int(tp),
+        "fp": int(fp),
+        "fn": int(fn),
+        "union": int(union),
+        "sensitivity": _safe_divide(tp, tp + fn),
+        "precision": _safe_divide(tp, tp + fp),
+        "f1": _safe_divide(2 * tp, 2 * tp + fp + fn),
+    }
+
+
+def compute_summary_tables(
+    df: "pd.DataFrame",
+) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
+    """Compute per-interview, concatenated, and weighted summary tables.
+
+    Args:
+        df: Concatenated output of format_comparison_table() across all documents.
+            Must contain columns: doc_id, construct, tp, fp, fn.
+
+    Returns:
+        Tuple of (per_interview, concatenated, weighted_summary) DataFrames.
+
+        per_interview: one row per (doc_id, construct) with raw counts and metrics.
+        concatenated: one row per construct (counts pooled across all docs) + Overall row.
+            Includes n_docs (docs where construct appeared) and p5/p95 of instance counts.
+        weighted_summary: one row per construct + Overall row, with weighted median
+            and [min, max] of each metric across documents. Weight = union per document.
+            Includes n_docs and p5/p95 of instance counts.
+    """
+    METRICS = ["sensitivity", "precision", "f1"]
+
+    total_docs = df["doc_id"].nunique()
+    all_constructs = df["construct"].unique().tolist()
+
+    # --- Per interview ---
+    grouped = df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
+    metric_rows = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in grouped.itertuples()]
+    metric_df = pd.DataFrame(metric_rows)
+    per_interview = pd.concat(
+        [grouped[["doc_id", "construct"]].reset_index(drop=True), metric_df], axis=1
+    )
+    for metric in METRICS:
+        per_interview[metric] = per_interview[metric].round(2)
+
+    # --- Helper: n_docs and percentiles for a construct ---
+    def _doc_stats(construct: str) -> dict:
+        if construct == "Overall":
+            union_vals = per_interview["union"].tolist()
+            n_possible = total_docs * len(all_constructs)
+            all_vals = union_vals + [0] * (n_possible - len(union_vals))
+            n_docs = per_interview["doc_id"].nunique()
+        else:
+            rows = per_interview[per_interview["construct"] == construct]
+            union_vals = rows["union"].tolist()
+            all_vals = union_vals + [0] * (total_docs - len(union_vals))
+            n_docs = len(rows)
+        return {
+            "n_docs": n_docs,
+            "p5": round(float(np.percentile(all_vals, 5)), 2),
+            "p95": round(float(np.percentile(all_vals, 95)), 2),
+        }
+
+    # --- Concatenated ---
+    construct_totals = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
+    overall_row = pd.DataFrame([{
+        "construct": "Overall",
+        "tp": construct_totals["tp"].sum(),
+        "fp": construct_totals["fp"].sum(),
+        "fn": construct_totals["fn"].sum(),
+    }])
+    concat_input = pd.concat([construct_totals, overall_row], ignore_index=True)
+    concat_metrics = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()]
+    concatenated = pd.concat(
+        [concat_input[["construct"]].reset_index(drop=True), pd.DataFrame(concat_metrics)],
+        axis=1,
+    )
+    for metric in METRICS:
+        concatenated[metric] = concatenated[metric].round(2)
+    doc_stats = pd.DataFrame([_doc_stats(c) for c in concatenated["construct"]])
+    concatenated = pd.concat([concatenated, doc_stats], axis=1)
+
+    # --- Weighted summary (median [min, max]) ---
+    weighted_rows = []
+    constructs_with_overall = list(per_interview["construct"].unique()) + ["Overall"]
+
+    for construct in constructs_with_overall:
+        group = per_interview if construct == "Overall" else per_interview[per_interview["construct"] == construct]
+
+        row: dict = {
+            "construct": construct,
+            "tp": int(group["tp"].sum()),
+            "fp": int(group["fp"].sum()),
+            "fn": int(group["fn"].sum()),
+        }
+        for metric in METRICS:
+            valid = group[["union", metric]].dropna(subset=[metric])
+            valid = valid[valid["union"] > 0]
+            if valid.empty:
+                row[f"{metric}_median"] = None
+                row[f"{metric}_min"] = None
+                row[f"{metric}_max"] = None
+            else:
+                vals = valid[metric].tolist()
+                weights = valid["union"].tolist()
+                row[f"{metric}_median"] = round(_weighted_median(vals, weights), 2)
+                row[f"{metric}_min"] = round(min(vals), 2)
+                row[f"{metric}_max"] = round(max(vals), 2)
+
+        stats = _doc_stats(construct)
+        row["n_docs"] = stats["n_docs"]
+        row["p5"] = stats["p5"]
+        row["p95"] = stats["p95"]
+        weighted_rows.append(row)
+
+    weighted_summary = pd.DataFrame(weighted_rows)
+
+    return per_interview, concatenated, weighted_summary
+
+
+def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
+    """Format weighted_summary into display strings: 'median [min–max]'.
+
+    Args:
+        weighted_summary: Output of compute_summary_tables()[2].
+
+    Returns:
+        DataFrame with one display column per metric and n_docs [p5–p95] column.
+    """
+    METRICS = ["sensitivity", "precision", "f1"]
+    display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
+
+    for metric in METRICS:
+        med_col = f"{metric}_median"
+        min_col = f"{metric}_min"
+        max_col = f"{metric}_max"
+
+        def fmt_row(r, m=med_col, mn=min_col, mx=max_col):
+            if pd.isna(r[m]):
+                return "—"
+            return f"{r[m]:.2f} [{r[mn]:.2f}–{r[mx]:.2f}]"
+
+        display[metric] = weighted_summary.apply(fmt_row, axis=1)
+
+    def fmt_n_docs(r):
+        if pd.isna(r["p5"]):
+            return str(int(r["n_docs"]))
+        return f"{int(r['n_docs'])} [{r['p5']:.2f}–{r['p95']:.2f}]"
+
+    display["n_docs [p5–p95]"] = weighted_summary.apply(fmt_n_docs, axis=1)
+
+    return display
 
 
 class PychometricsComparator:
