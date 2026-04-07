@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from sklearn.metrics import average_precision_score
 
 from pychometrics.config import AnalyzerConfig
 from pychometrics.prompting import PromptingError, call_llm_api
@@ -221,21 +222,14 @@ def _truncate(text: str, max_len: int) -> str:
     return f"{text[: max_len - 3]}..."
 
 
-def format_comparison_table(
+def _format_single_comparison(
     result: dict,
     *,
     max_quote_length: int | None = None,
 ) -> "pd.DataFrame":
-    """Build a row-level comparison dataframe from compare_documents() output.
+    """Build a row-level DataFrame from a single compare_documents() result.
 
-    Args:
-        result: A single-document comparison result from compare_documents().
-        max_quote_length: Optional quote truncation for display convenience.
-
-    Returns:
-        pandas DataFrame with one row per matched/human_only/llm_only item.
-        Columns: doc_id, construct, status, human_quote, llm_quote,
-                 human_indices, llm_indices, paraphrase, span_overlap, match_confidence.
+    Private helper called by format_comparison_table. Not intended for direct use.
     """
     rows: list[dict] = []
     comparisons = result.get("comparisons", [])
@@ -329,6 +323,51 @@ def format_comparison_table(
     ]
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def format_comparison_table(
+    comparison_results: dict,
+    *,
+    max_quote_length: int | None = None,
+) -> "pd.DataFrame":
+    """Build a combined row-level DataFrame from all compare_directories() results.
+
+    Args:
+        comparison_results: Output of compare_directories() — a dict mapping
+            document IDs to single-document comparison results.
+        max_quote_length: Optional quote truncation for display convenience.
+
+    Returns:
+        pandas DataFrame with one row per matched/human_only/llm_only instance
+        across all interviews. Prints a description and column definitions.
+    """
+    df = pd.concat(
+        [
+            _format_single_comparison(result, max_quote_length=max_quote_length)
+            for result in comparison_results.values()
+        ],
+        ignore_index=True,
+    )
+    print(
+        "Comparison Table\n"
+        "----------------\n"
+        "One row per coded instance across all interviews. Each row represents a quote\n"
+        "identified by at least one coder, with its classification and match details.\n"
+        "\n"
+        "Columns:\n"
+        "  doc_id           : interview identifier\n"
+        "  construct        : psychological construct the instance belongs to\n"
+        "  status           : matched (TP), human_only (FN), or llm_only (FP)\n"
+        "  human_quote      : quote extracted by the human coder\n"
+        "  llm_quote        : quote extracted by the LLM\n"
+        "  human_indices    : character-level start:end indices of the human quote in the source text\n"
+        "  llm_indices      : character-level start:end indices of the LLM quote in the source text\n"
+        "  paraphrase       : True if the matched quotes differ meaningfully in wording\n"
+        "  span_overlap     : Jaccard overlap between human and LLM character spans (matched rows only)\n"
+        "  match_confidence : LLM matcher confidence that the two quotes refer to the same passage\n"
+        "  tp/fp/fn         : binary indicators for this row's contribution to counts\n"
+    )
+    return df
 
 
 def _safe_divide(numerator: float, denominator: float) -> float | None:
@@ -439,6 +478,49 @@ def _metrics_from_counts(tp: float, fp: float, fn: float) -> dict:
         "cohens_kappa": kappa_results["cohens_kappa"],
         "pabak": kappa_results["prevalence_adjusted_kappa"],
     }
+
+
+def compute_pr_auc(df: "pd.DataFrame") -> dict[str, float | None]:
+    """Compute PR AUC per construct and Overall from a comparison dataframe.
+
+    LLM predictions are ranked by match_confidence. Matched rows are positive
+    (label=1), llm_only rows are negative (label=0, score=0). human_only rows
+    are excluded as they are not LLM predictions.
+
+    Args:
+        df: Concatenated output of format_comparison_table() across all documents.
+            Must contain columns: construct, status, match_confidence.
+
+    Returns:
+        Dict mapping construct name (and 'Overall') to PR AUC float, or None
+        if there are fewer than 2 unique labels for a construct.
+
+    Notes:
+        PR AUC is computed by pooling all LLM predictions across documents per
+        construct. Per-document PR AUC is not computed as counts are too low
+        to form a meaningful curve. score=0 is assigned to all llm_only rows
+        (Option A convention - conservative, no schema changes required).
+    """
+    llm_preds = df[df["status"].isin(["matched", "llm_only"])].copy()
+    llm_preds["_label"] = (llm_preds["status"] == "matched").astype(int)
+    llm_preds["_score"] = llm_preds["match_confidence"].fillna(0.0)
+
+    results: dict[str, float | None] = {}
+
+    all_constructs = llm_preds["construct"].unique().tolist()
+    groups = [("Overall", llm_preds)] + [
+        (c, llm_preds[llm_preds["construct"] == c]) for c in all_constructs
+    ]
+
+    for name, group in groups:
+        labels = group["_label"].tolist()
+        scores = group["_score"].tolist()
+        if len(set(labels)) < 2:
+            results[name] = None
+        else:
+            results[name] = round(float(average_precision_score(labels, scores)), 4)
+
+    return results
 
 
 def compute_summary_tables(
@@ -562,7 +644,73 @@ def compute_summary_tables(
 
     weighted_summary = pd.DataFrame(weighted_rows)
 
+    # --- PR AUC ---
+    pr_auc = compute_pr_auc(df)
+    concatenated["pr_auc"] = concatenated["construct"].map(pr_auc)
+    # PR AUC per (doc_id, construct)
+    per_interview_pr_auc = []
+    for _, row in per_interview[["doc_id", "construct"]].iterrows():
+        doc_subset = df[
+            (df["doc_id"] == row["doc_id"]) & (df["construct"] == row["construct"])
+        ]
+        result = compute_pr_auc(doc_subset)
+        per_interview_pr_auc.append(result.get(row["construct"]))
+    per_interview["pr_auc"] = per_interview_pr_auc
+
+    # Aggregate pr_auc into weighted_summary: median [min, max] across per-doc values
+    for construct in constructs_with_overall:
+        group = (
+            per_interview
+            if construct == "Overall"
+            else per_interview[per_interview["construct"] == construct]
+        )
+        valid = group["pr_auc"].dropna().tolist()
+        idx = weighted_summary.index[weighted_summary["construct"] == construct][0]
+        if len(valid) < 1:
+            weighted_summary.at[idx, "pr_auc_median"] = None
+            weighted_summary.at[idx, "pr_auc_min"] = None
+            weighted_summary.at[idx, "pr_auc_max"] = None
+        else:
+            weights = group.loc[group["pr_auc"].notna(), "union"].tolist()
+            weighted_summary.at[idx, "pr_auc_median"] = (
+                round(_weighted_median(valid, weights), 4)
+                if weights
+                else round(float(sum(valid) / len(valid)), 4)
+            )
+            weighted_summary.at[idx, "pr_auc_min"] = round(min(valid), 4)
+            weighted_summary.at[idx, "pr_auc_max"] = round(max(valid), 4)
+
     return per_interview, concatenated, weighted_summary
+
+
+def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
+    """Format per_interview for display, printing a description and column definitions.
+
+    Args:
+        per_interview: Output of compute_summary_tables()[0].
+
+    Returns:
+        The per_interview DataFrame unchanged (formatting is handled by pandas display).
+    """
+    print(
+        "Per-Interview Metrics\n"
+        "---------------------\n"
+        "One row per (interview, construct) combination. Constructs that did not appear\n"
+        "in a given interview are absent — they do not appear as zero rows.\n"
+        "\n"
+        "Columns:\n"
+        "  doc_id       : interview identifier\n"
+        "  construct    : psychological construct\n"
+        "  tp/fp/fn     : true positives, false positives, false negatives for this interview-construct\n"
+        "  union        : total coded instances (TP + FP + FN)\n"
+        "  sensitivity  : TP / (TP + FN)\n"
+        "  precision    : TP / (TP + FP)\n"
+        "  f1           : harmonic mean of sensitivity and precision\n"
+        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
+        "  pabak        : prevalence-adjusted kappa\n"
+        "  pr_auc       : area under precision-recall curve; NaN where insufficient label classes\n"
+    )
+    return per_interview
 
 
 def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
@@ -572,8 +720,24 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
         weighted_summary: Output of compute_summary_tables()[2].
 
     Returns:
-        DataFrame with one display column per metric and n_docs [p5–p95] column.
+        DataFrame with one display column per metric and interviews_with_construct [p5–p95] column.
     """
+    print(
+        "Weighted Summary\n"
+        "----------------\n"
+        "One row per construct. Metrics are computed per interview first, then summarized\n"
+        "as weighted median [min\u2013max] across interviews, weighted by union size (TP+FP+FN).\n"
+        "\n"
+        "Columns:\n"
+        "  tp/fp/fn                          : total true positives, false positives, false negatives across all interviews\n"
+        "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
+        "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
+        "  f1                                : harmonic mean of sensitivity and precision\n"
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
+        "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
+        "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
+    )
     METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
     display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
 
@@ -594,21 +758,48 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
             return str(int(r["n_docs"]))
         return f"{int(r['n_docs'])} [{r['p5']:.2f}–{r['p95']:.2f}]"
 
-    display["n_docs [p5–p95]"] = weighted_summary.apply(fmt_n_docs, axis=1)
+    def fmt_pr_auc(r):
+        if r["pr_auc_median"] is None or (
+            isinstance(r["pr_auc_median"], float) and pd.isna(r["pr_auc_median"])
+        ):
+            return "—"
+        return f"{r['pr_auc_median']:.2f} [{r['pr_auc_min']:.2f}–{r['pr_auc_max']:.2f}]"
+
+    display["pr_auc"] = weighted_summary.apply(fmt_pr_auc, axis=1)
+
+    display["interviews_with_construct [p5–p95]"] = weighted_summary.apply(
+        fmt_n_docs, axis=1
+    )
 
     return display
 
 
 def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
-    """Format concatenated into display strings, with n_docs [p5-p95] bracket column.
+    """Format concatenated into display strings, with interviews_with_construct [p5-p95] bracket column.
 
     Args:
         concatenated: Output of compute_summary_tables()[1].
 
     Returns:
-        DataFrame with metric columns rounded to 2dp and n_docs [p5-p95] column.
+        DataFrame with metric columns rounded to 2dp and interviews_with_construct [p5-p95] column.
         Separate p5 and p95 columns are dropped.
     """
+    print(
+        "Concatenated Metrics\n"
+        "--------------------\n"
+        "One row per construct. TP/FP/FN counts are pooled across all interviews before\n"
+        "metrics are computed — treats the entire dataset as a single document.\n"
+        "\n"
+        "Columns:\n"
+        "  tp/fp/fn                          : total counts pooled across all interviews\n"
+        "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
+        "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
+        "  f1                                : harmonic mean of sensitivity and precision\n"
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
+        "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
+        "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
+    )
     METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
     display = concatenated[["construct", "tp", "fp", "fn"]].copy()
 
@@ -622,7 +813,15 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
             return str(int(r["n_docs"]))
         return f"{int(r['n_docs'])} [{r['p5']:.2f}-{r['p95']:.2f}]"
 
-    display["n_docs [p5-p95]"] = concatenated.apply(fmt_n_docs, axis=1)
+    display["pr_auc"] = concatenated["pr_auc"].apply(
+        lambda v: "—"
+        if v is None or (isinstance(v, float) and pd.isna(v))
+        else f"{v:.2f}"
+    )
+
+    display["interviews_with_construct [p5-p95]"] = concatenated.apply(
+        fmt_n_docs, axis=1
+    )
 
     return display
 
