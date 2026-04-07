@@ -56,7 +56,7 @@ def _strip_code_fences(text: str) -> str:
     if cleaned.startswith("```"):
         first_newline = cleaned.find("\n")
         if first_newline != -1:
-            cleaned = cleaned[first_newline + 1:]
+            cleaned = cleaned[first_newline + 1 :]
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3]
     return cleaned.strip()
@@ -88,14 +88,12 @@ def _extract_first_json_object(text: str) -> str | None:
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    return text[start: idx + 1]
+                    return text[start : idx + 1]
 
     return None
 
 
-def _compute_span_overlap(
-    human_idx: str | None, llm_idx: str | None
-) -> float | None:
+def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float | None:
     """Compute Jaccard overlap between two character-index spans ('start:end' format)."""
     if not human_idx or not llm_idx:
         return None
@@ -135,9 +133,8 @@ def _parse_construct_match_response(response_text: str) -> list[dict]:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        extracted = (
-            _extract_first_json_object(cleaned)
-            or _extract_first_json_object(response_text)
+        extracted = _extract_first_json_object(cleaned) or _extract_first_json_object(
+            response_text
         )
         if not extracted:
             raise ComparisonError("No valid JSON object found in matcher response.")
@@ -169,12 +166,14 @@ def _parse_construct_match_response(response_text: str) -> list[dict]:
             confidence = 0.5
         confidence = max(0.0, min(1.0, confidence))
 
-        result.append({
-            "human_index": human_index,
-            "llm_index": llm_index,
-            "paraphrase": paraphrase,
-            "match_confidence": confidence,
-        })
+        result.append(
+            {
+                "human_index": human_index,
+                "llm_index": llm_index,
+                "paraphrase": paraphrase,
+                "match_confidence": confidence,
+            }
+        )
 
     return result
 
@@ -251,61 +250,67 @@ def format_comparison_table(
             if max_quote_length is not None:
                 human_quote = _truncate(human_quote, max_quote_length)
                 llm_quote = _truncate(llm_quote, max_quote_length)
-            rows.append({
-                "doc_id": document_id,
-                "construct": construct,
-                "status": "matched",
-                "human_quote": human_quote,
-                "llm_quote": llm_quote,
-                "human_indices": match.get("human_indices"),
-                "llm_indices": match.get("llm_indices"),
-                "paraphrase": match.get("paraphrase"),
-                "span_overlap": match.get("span_overlap"),
-                "match_confidence": match.get("match_confidence"),
-                "tp": 1,
-                "fp": 0,
-                "fn": 0,
-            })
+            rows.append(
+                {
+                    "doc_id": document_id,
+                    "construct": construct,
+                    "status": "matched",
+                    "human_quote": human_quote,
+                    "llm_quote": llm_quote,
+                    "human_indices": match.get("human_indices"),
+                    "llm_indices": match.get("llm_indices"),
+                    "paraphrase": match.get("paraphrase"),
+                    "span_overlap": match.get("span_overlap"),
+                    "match_confidence": match.get("match_confidence"),
+                    "tp": 1,
+                    "fp": 0,
+                    "fn": 0,
+                }
+            )
 
         for item in block.get("human_only", []):
             quote = str(item.get("quote", ""))
             if max_quote_length is not None:
                 quote = _truncate(quote, max_quote_length)
-            rows.append({
-                "doc_id": document_id,
-                "construct": construct,
-                "status": "human_only",
-                "human_quote": quote,
-                "llm_quote": None,
-                "human_indices": item.get("indices"),
-                "llm_indices": None,
-                "paraphrase": None,
-                "span_overlap": None,
-                "match_confidence": None,
-                "tp": 0,
-                "fp": 0,
-                "fn": 1,
-            })
+            rows.append(
+                {
+                    "doc_id": document_id,
+                    "construct": construct,
+                    "status": "human_only",
+                    "human_quote": quote,
+                    "llm_quote": None,
+                    "human_indices": item.get("indices"),
+                    "llm_indices": None,
+                    "paraphrase": None,
+                    "span_overlap": None,
+                    "match_confidence": None,
+                    "tp": 0,
+                    "fp": 0,
+                    "fn": 1,
+                }
+            )
 
         for item in block.get("llm_only", []):
             quote = str(item.get("quote", ""))
             if max_quote_length is not None:
                 quote = _truncate(quote, max_quote_length)
-            rows.append({
-                "doc_id": document_id,
-                "construct": construct,
-                "status": "llm_only",
-                "human_quote": None,
-                "llm_quote": quote,
-                "human_indices": None,
-                "llm_indices": item.get("indices"),
-                "paraphrase": None,
-                "span_overlap": None,
-                "match_confidence": None,
-                "tp": 0,
-                "fp": 1,
-                "fn": 0,
-            })
+            rows.append(
+                {
+                    "doc_id": document_id,
+                    "construct": construct,
+                    "status": "llm_only",
+                    "human_quote": None,
+                    "llm_quote": quote,
+                    "human_indices": None,
+                    "llm_indices": item.get("indices"),
+                    "paraphrase": None,
+                    "span_overlap": None,
+                    "match_confidence": None,
+                    "tp": 0,
+                    "fp": 1,
+                    "fn": 0,
+                }
+            )
 
     columns = [
         "doc_id",
@@ -342,16 +347,97 @@ def _weighted_median(values: list[float], weights: list[float]) -> float:
     return pairs[-1][0]
 
 
-def _metrics_from_counts(tp: float, fp: float, fn: float) -> dict:
-    union = tp + fp + fn
+def _agreement_metrics_binary(rater_a: list[int], rater_b: list[int]) -> dict:
+    """Compute Cohen's Kappa and PABAK between two binary raters.
+
+    Args:
+        rater_a: Binary ratings from rater A (0 or 1), one entry per item.
+        rater_b: Binary ratings from rater B (0 or 1), same items, same order.
+
+    Returns:
+        Dict with cohens_kappa, prevalence_adjusted_kappa, observed_agreement,
+        expected_agreement, and raw counts.
+
+    Notes:
+        TN = 0 by convention. This function is called with only the observed
+        coded items (tp + fp + fn). Open-ended span coding tasks have no
+        observable true negatives, so kappa will skew lower than tasks with
+        a fixed item inventory. Do not compare these kappa values directly
+        to benchmarks from fixed-item rating tasks.
+    """
+    if len(rater_a) != len(rater_b):
+        raise ValueError("Rater arrays must have the same length")
+
+    n_items = len(rater_a)
+    if n_items == 0:
+        return {
+            "cohens_kappa": None,
+            "prevalence_adjusted_kappa": None,
+            "observed_agreement": None,
+            "expected_agreement": None,
+        }
+
+    both_positive = 0
+    both_negative = 0
+    a_positive_b_negative = 0
+    a_negative_b_positive = 0
+
+    for a, b in zip(rater_a, rater_b):
+        if a == 1 and b == 1:
+            both_positive += 1
+        elif a == 0 and b == 0:
+            both_negative += 1
+        elif a == 1 and b == 0:
+            a_positive_b_negative += 1
+        elif a == 0 and b == 1:
+            a_negative_b_positive += 1
+
+    observed_agreement = (both_positive + both_negative) / n_items
+
+    prob_a_positive = (both_positive + a_positive_b_negative) / n_items
+    prob_b_positive = (both_positive + a_negative_b_positive) / n_items
+    prob_a_negative = (both_negative + a_negative_b_positive) / n_items
+    prob_b_negative = (both_negative + a_positive_b_negative) / n_items
+
+    expected_agreement = (
+        prob_a_positive * prob_b_positive + prob_a_negative * prob_b_negative
+    )
+
+    if expected_agreement == 1:
+        cohens_kappa = 1.0
+    else:
+        cohens_kappa = (observed_agreement - expected_agreement) / (
+            1 - expected_agreement
+        )
+
+    prevalence_adjusted_kappa = 2 * observed_agreement - 1
+
     return {
-        "tp": int(tp),
-        "fp": int(fp),
-        "fn": int(fn),
-        "union": int(union),
+        "cohens_kappa": round(cohens_kappa, 4),
+        "prevalence_adjusted_kappa": round(prevalence_adjusted_kappa, 4),
+        "observed_agreement": round(observed_agreement, 4),
+        "expected_agreement": round(expected_agreement, 4),
+    }
+
+
+def _metrics_from_counts(tp: float, fp: float, fn: float) -> dict:
+    tp, fp, fn = int(tp), int(fp), int(fn)
+    union = tp + fp + fn
+
+    rater_a = [1] * tp + [1] * fn + [0] * fp
+    rater_b = [1] * tp + [0] * fn + [1] * fp
+    kappa_results = _agreement_metrics_binary(rater_a, rater_b)
+
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "union": union,
         "sensitivity": _safe_divide(tp, tp + fn),
         "precision": _safe_divide(tp, tp + fp),
         "f1": _safe_divide(2 * tp, 2 * tp + fp + fn),
+        "cohens_kappa": kappa_results["cohens_kappa"],
+        "pabak": kappa_results["prevalence_adjusted_kappa"],
     }
 
 
@@ -374,13 +460,15 @@ def compute_summary_tables(
             and [min, max] of each metric across documents. Weight = union per document.
             Includes n_docs and p5/p95 of instance counts.
     """
-    METRICS = ["sensitivity", "precision", "f1"]
+    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
 
     total_docs = df["doc_id"].nunique()
     all_constructs = df["construct"].unique().tolist()
 
     # --- Per interview ---
-    grouped = df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
+    grouped = (
+        df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
+    )
     metric_rows = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in grouped.itertuples()]
     metric_df = pd.DataFrame(metric_rows)
     per_interview = pd.concat(
@@ -409,16 +497,25 @@ def compute_summary_tables(
 
     # --- Concatenated ---
     construct_totals = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
-    overall_row = pd.DataFrame([{
-        "construct": "Overall",
-        "tp": construct_totals["tp"].sum(),
-        "fp": construct_totals["fp"].sum(),
-        "fn": construct_totals["fn"].sum(),
-    }])
+    overall_row = pd.DataFrame(
+        [
+            {
+                "construct": "Overall",
+                "tp": construct_totals["tp"].sum(),
+                "fp": construct_totals["fp"].sum(),
+                "fn": construct_totals["fn"].sum(),
+            }
+        ]
+    )
     concat_input = pd.concat([construct_totals, overall_row], ignore_index=True)
-    concat_metrics = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()]
+    concat_metrics = [
+        _metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()
+    ]
     concatenated = pd.concat(
-        [concat_input[["construct"]].reset_index(drop=True), pd.DataFrame(concat_metrics)],
+        [
+            concat_input[["construct"]].reset_index(drop=True),
+            pd.DataFrame(concat_metrics),
+        ],
         axis=1,
     )
     for metric in METRICS:
@@ -431,7 +528,11 @@ def compute_summary_tables(
     constructs_with_overall = list(per_interview["construct"].unique()) + ["Overall"]
 
     for construct in constructs_with_overall:
-        group = per_interview if construct == "Overall" else per_interview[per_interview["construct"] == construct]
+        group = (
+            per_interview
+            if construct == "Overall"
+            else per_interview[per_interview["construct"] == construct]
+        )
 
         row: dict = {
             "construct": construct,
@@ -473,7 +574,7 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
     Returns:
         DataFrame with one display column per metric and n_docs [p5–p95] column.
     """
-    METRICS = ["sensitivity", "precision", "f1"]
+    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
     display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
 
     for metric in METRICS:
@@ -562,34 +663,42 @@ class PychometricsComparator:
             # If one side is empty, everything is unmatched
             if not human_list:
                 for llm_item in llm_list:
-                    llm_only.append({
+                    llm_only.append(
+                        {
+                            "construct": construct,
+                            "quote": llm_item.get("quote"),
+                            "indices": llm_item.get("quote_index"),
+                            "confidence": llm_item.get("confidence"),
+                        }
+                    )
+                comparisons.append(
+                    {
                         "construct": construct,
-                        "quote": llm_item.get("quote"),
-                        "indices": llm_item.get("quote_index"),
-                        "confidence": llm_item.get("confidence"),
-                    })
-                comparisons.append({
-                    "construct": construct,
-                    "matched": matched,
-                    "human_only": human_only,
-                    "llm_only": llm_only,
-                })
+                        "matched": matched,
+                        "human_only": human_only,
+                        "llm_only": llm_only,
+                    }
+                )
                 continue
 
             if not llm_list:
                 for h in human_list:
-                    human_only.append({
+                    human_only.append(
+                        {
+                            "construct": construct,
+                            "quote": h.get("quote"),
+                            "indices": h.get("quote_index"),
+                            "confidence": h.get("confidence"),
+                        }
+                    )
+                comparisons.append(
+                    {
                         "construct": construct,
-                        "quote": h.get("quote"),
-                        "indices": h.get("quote_index"),
-                        "confidence": h.get("confidence"),
-                    })
-                comparisons.append({
-                    "construct": construct,
-                    "matched": matched,
-                    "human_only": human_only,
-                    "llm_only": llm_only,
-                })
+                        "matched": matched,
+                        "human_only": human_only,
+                        "llm_only": llm_only,
+                    }
+                )
                 continue
 
             # One LLM call for all quotes in this construct
@@ -617,47 +726,55 @@ class PychometricsComparator:
                 h = human_list[h_idx]
                 llm_item = llm_list[l_idx]
 
-                matched.append({
-                    "construct": construct,
-                    "human_quote": h.get("quote"),
-                    "llm_quote": llm_item.get("quote"),
-                    "human_indices": h.get("quote_index"),
-                    "llm_indices": llm_item.get("quote_index"),
-                    "human_confidence": h.get("confidence"),
-                    "llm_confidence": llm_item.get("confidence"),
-                    "paraphrase": decision["paraphrase"],
-                    "span_overlap": _compute_span_overlap(
-                        h.get("quote_index"), llm_item.get("quote_index")
-                    ),
-                    "match_confidence": decision["match_confidence"],
-                })
+                matched.append(
+                    {
+                        "construct": construct,
+                        "human_quote": h.get("quote"),
+                        "llm_quote": llm_item.get("quote"),
+                        "human_indices": h.get("quote_index"),
+                        "llm_indices": llm_item.get("quote_index"),
+                        "human_confidence": h.get("confidence"),
+                        "llm_confidence": llm_item.get("confidence"),
+                        "paraphrase": decision["paraphrase"],
+                        "span_overlap": _compute_span_overlap(
+                            h.get("quote_index"), llm_item.get("quote_index")
+                        ),
+                        "match_confidence": decision["match_confidence"],
+                    }
+                )
                 used_human.add(h_idx)
                 used_llm.add(l_idx)
 
             for i, h in enumerate(human_list):
                 if i not in used_human:
-                    human_only.append({
-                        "construct": construct,
-                        "quote": h.get("quote"),
-                        "indices": h.get("quote_index"),
-                        "confidence": h.get("confidence"),
-                    })
+                    human_only.append(
+                        {
+                            "construct": construct,
+                            "quote": h.get("quote"),
+                            "indices": h.get("quote_index"),
+                            "confidence": h.get("confidence"),
+                        }
+                    )
 
             for i, llm_item in enumerate(llm_list):
                 if i not in used_llm:
-                    llm_only.append({
-                        "construct": construct,
-                        "quote": llm_item.get("quote"),
-                        "indices": llm_item.get("quote_index"),
-                        "confidence": llm_item.get("confidence"),
-                    })
+                    llm_only.append(
+                        {
+                            "construct": construct,
+                            "quote": llm_item.get("quote"),
+                            "indices": llm_item.get("quote_index"),
+                            "confidence": llm_item.get("confidence"),
+                        }
+                    )
 
-            comparisons.append({
-                "construct": construct,
-                "matched": matched,
-                "human_only": human_only,
-                "llm_only": llm_only,
-            })
+            comparisons.append(
+                {
+                    "construct": construct,
+                    "matched": matched,
+                    "human_only": human_only,
+                    "llm_only": llm_only,
+                }
+            )
 
         return comparisons
 
