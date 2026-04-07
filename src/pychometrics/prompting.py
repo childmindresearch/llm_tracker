@@ -5,15 +5,15 @@ constructing prompts, making API requests, parsing responses, and
 handling retries.
 """
 
+import difflib
 import json
 import time
 from typing import Any, Optional
-import difflib
 
 import httpx
 
 from pychometrics.config import AnalyzerConfig
-from pychometrics.models import APIMetadata, AnalysisResult, ConstructInstance
+from pychometrics.models import AnalysisResult, APIMetadata, ConstructInstance
 
 
 class PromptingError(Exception):

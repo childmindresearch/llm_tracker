@@ -1,6 +1,9 @@
 # MacOS system files
 .DS_Store
 
+# Local test notebooks (private data - do not commit)
+tutorial_local.ipynb
+
 # Ruff tmp files
 .ruff_cache
 
