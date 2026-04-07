@@ -599,6 +599,34 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
     return display
 
 
+def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
+    """Format concatenated into display strings, with n_docs [p5-p95] bracket column.
+
+    Args:
+        concatenated: Output of compute_summary_tables()[1].
+
+    Returns:
+        DataFrame with metric columns rounded to 2dp and n_docs [p5-p95] column.
+        Separate p5 and p95 columns are dropped.
+    """
+    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    display = concatenated[["construct", "tp", "fp", "fn"]].copy()
+
+    for metric in METRICS:
+        display[metric] = concatenated[metric].apply(
+            lambda v: "—" if pd.isna(v) else f"{v:.2f}"
+        )
+
+    def fmt_n_docs(r):
+        if pd.isna(r["p5"]):
+            return str(int(r["n_docs"]))
+        return f"{int(r['n_docs'])} [{r['p5']:.2f}-{r['p95']:.2f}]"
+
+    display["n_docs [p5-p95]"] = concatenated.apply(fmt_n_docs, axis=1)
+
+    return display
+
+
 class PychometricsComparator:
     """Compare human-coded and LLM-coded results using an LLM matcher."""
 
