@@ -2,7 +2,43 @@
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
+
+
+def _resolve_api_key(value: str) -> str:
+    """Accept either a raw key string or a path to a .env file containing the key.
+
+    If value is a path to an existing .env file, loads it and reads
+    OPENROUTER_API_KEY from it. Otherwise treats value as the raw key.
+
+    Args:
+    ----
+        value: Either a raw API key string or a path to a .env file.
+
+    Returns:
+    -------
+        The resolved API key string.
+
+    Raises:
+    ------
+        ValueError: If the .env file exists but does not contain OPENROUTER_API_KEY,
+            or if the key is empty.
+
+    """
+    path = Path(value)
+    if path.is_file() and path.suffix == ".env":
+        load_dotenv(dotenv_path=path, override=True)
+        key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        if not key:
+            raise ValueError(
+                f"OPENROUTER_API_KEY not found or empty in '{path}'. "
+                "Make sure your .env file contains: OPENROUTER_API_KEY=your-key-here"
+            )
+        return key
+    return value
 
 
 DEFAULT_PROMPT = """You are analyzing text to identify and extract instances of psychological constructs.
@@ -56,7 +92,8 @@ REQUEST_TIMEOUT = 120.0
 class AnalyzerConfig:
     """Configuration for the PychometricsAnalyzer.
 
-    Attributes:
+    Attributes
+    ----------
         api_key: OpenRouter API key. If not provided, reads from
             OPENROUTER_API_KEY environment variable.
         model_name: Model identifier for OpenRouter API.
@@ -65,6 +102,7 @@ class AnalyzerConfig:
         max_retries: Maximum number of retry attempts for failed requests.
         timeout: Request timeout in seconds.
         base_url: Base URL for the API endpoint.
+
     """
 
     api_key: Optional[str] = None
@@ -76,20 +114,35 @@ class AnalyzerConfig:
 
     def __post_init__(self) -> None:
         """Validate configuration and set defaults from environment."""
-        if self.api_key is None:
-            self.api_key = os.environ.get("OPENROUTER_API_KEY")
+        self.api_key = self._load_api_key()
 
-        if self.api_key is None:
+    def _load_api_key(self) -> str:
+        """Load and resolve the API key from a string or .env file path.
+
+        Returns
+        -------
+            The resolved API key string.
+
+        Raises
+        ------
+            ValueError: If no API key is found or the .env file is missing the key.
+
+        """
+        key = self.api_key or os.environ.get("OPENROUTER_API_KEY")
+        if key is None:
             raise ValueError(
                 "API key is required. Provide via api_key parameter or "
                 "set OPENROUTER_API_KEY environment variable."
             )
+        return _resolve_api_key(key)
 
     @property
     def prompt_template(self) -> str:
         """Get the prompt template to use.
 
-        Returns:
+        Returns
+        -------
             The custom prompt if provided, otherwise the default prompt.
+
         """
         return self.custom_prompt if self.custom_prompt else DEFAULT_PROMPT
