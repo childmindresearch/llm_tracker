@@ -826,7 +826,7 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
     return display
 
 
-class PychometricsComparator:
+class PychometricsComparer:
     """Compare human-coded and LLM-coded results using an LLM matcher."""
 
     def __init__(
