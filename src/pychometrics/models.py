@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 class ConstructDefinition(BaseModel):
     """Definition of a psychological construct in the codebook.
 
-    Attributes:
+    Attributes
+    ----------
         name: The name of the psychological construct.
         definition: A clear definition explaining the construct.
         examples: Optional list of example phrases or quotes.
+
     """
 
     name: str = Field(..., description="Name of the psychological construct")
@@ -29,8 +31,10 @@ class ConstructDefinition(BaseModel):
 class Codebook(BaseModel):
     """A codebook containing psychological construct definitions.
 
-    Attributes:
+    Attributes
+    ----------
         constructs: List of construct definitions to identify in text.
+
     """
 
     constructs: list[ConstructDefinition] = Field(
@@ -41,12 +45,14 @@ class Codebook(BaseModel):
 class ConstructInstance(BaseModel):
     """An instance of a psychological construct found in text.
 
-    Attributes:
+    Attributes
+    ----------
         construct: Name of the construct identified.
         speaker_id: Speaker identifier if available.
         quote: Exact quote from the text where construct appears.
         quote_index: Start and end indices of the quote in the original text.
         confidence: Ordinal confidence score (0-2).
+
     """
 
     construct: str = Field(..., description="Name of the identified construct")
@@ -57,20 +63,22 @@ class ConstructInstance(BaseModel):
     quote_index: Optional[str] = Field(
         default=None, description="Start:end indices of quote in original text"
     )
-    confidence: int = Field(
-        ...,
+    confidence: Optional[int] = Field(
+        default=None,
         ge=0,
         le=2,
-        description="Confidence score: 0=not mentioned/negated, 1=indirect, 2=clear",
+        description="Confidence score: 0=not mentioned/negated, 1=indirect, 2=clear. None for human codings.",
     )
 
 
 class AnalysisResult(BaseModel):
     """Result of analyzing a single document for psychological constructs.
 
-    Attributes:
+    Attributes
+    ----------
         document_id: Identifier for the document (from filename).
         instances: List of construct instances found in the document.
+
     """
 
     document_id: str = Field(..., description="Document identifier from filename")
@@ -81,8 +89,10 @@ class AnalysisResult(BaseModel):
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization.
 
-        Returns:
+        Returns
+        -------
             Dictionary representation of the analysis result.
+
         """
         return self.model_dump()
 
@@ -90,13 +100,15 @@ class AnalysisResult(BaseModel):
 class APIMetadata(BaseModel):
     """Metadata from the LLM API response.
 
-    Attributes:
+    Attributes
+    ----------
         model: The model used for the request.
         usage: Token usage information.
         created: Timestamp of the response.
         response_id: Unique identifier for the response.
         latency_ms: Response latency in milliseconds.
         raw_response: Complete raw response from the API.
+
     """
 
     model: Optional[str] = None
@@ -115,12 +127,14 @@ class APIMetadata(BaseModel):
 class ErrorRecord(BaseModel):
     """Record of a failed document processing attempt.
 
-    Attributes:
+    Attributes
+    ----------
         document_id: Identifier for the document.
         document_path: Path to the original document.
         error_message: Description of the error.
         model_used: Model that was attempted.
         timestamp: When the error occurred.
+
     """
 
     document_id: str

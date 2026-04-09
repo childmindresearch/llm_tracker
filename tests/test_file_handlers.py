@@ -5,13 +5,13 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from pychometrics.file_handlers import (
     FileLoadError,
     create_output_directory,
     get_document_files,
     load_codebook,
     load_csv_document,
+    load_dedoose_xlsx,
     load_document,
     load_txt_document,
     save_analysis_result,
@@ -272,3 +272,170 @@ def test_readme_no_failures(tmp_path):
 
     content = readme_path.read_text()
     assert "All documents processed successfully" in content
+
+
+@pytest.fixture
+def dedoose_codebook(tmp_path):
+    """Minimal codebook with common test constructs."""
+    data = {
+        "constructs": [
+            {"name": "Anxiety", "definition": "def"},
+            {"name": "Depression", "definition": "def"},
+        ]
+    }
+    path = tmp_path / "codebook.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+@pytest.fixture
+def make_dedoose_xlsx(tmp_path):
+    """Factory fixture — call it with rows to get an xlsx path back."""
+    import pandas as pd
+
+    def _make(rows, filename="dedoose.xlsx"):
+        df = pd.DataFrame(
+            rows,
+            columns=[
+                "Media Title",
+                "Excerpt Range",
+                "Excerpt Copy",
+                "Codes Applied Combined",
+            ],
+        )
+        path = tmp_path / filename
+        df.to_excel(path, index=False)
+        return path
+
+    return _make
+
+
+def test_dedoose_basic(dedoose_codebook, make_dedoose_xlsx):
+    """Single row, single construct — happy path."""
+    xlsx = make_dedoose_xlsx(
+        [["interview_01", "100-200", "I felt very anxious", "Anxiety"]]
+    )
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert len(results) == 1
+    assert results[0].document_id == "interview_01"
+    assert len(results[0].instances) == 1
+    assert results[0].instances[0].construct == "Anxiety"
+    assert results[0].instances[0].quote == "I felt very anxious"
+    assert results[0].instances[0].quote_index == "100:200"
+
+
+def test_dedoose_multiple_constructs_same_row(dedoose_codebook, make_dedoose_xlsx):
+    """One excerpt tagged with multiple constructs splits into multiple instances."""
+    xlsx = make_dedoose_xlsx(
+        [
+            [
+                "interview_01",
+                "0-50",
+                "I feel anxious and depressed",
+                "Anxiety, Depression",
+            ]
+        ]
+    )
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert len(results[0].instances) == 2
+    constructs = {i.construct for i in results[0].instances}
+    assert constructs == {"Anxiety", "Depression"}
+
+
+def test_dedoose_multiple_documents(dedoose_codebook, make_dedoose_xlsx):
+    """Rows from different Media Titles produce separate AnalysisResult objects."""
+    xlsx = make_dedoose_xlsx(
+        [
+            ["doc_a", "0-50", "quote one", "Anxiety"],
+            ["doc_b", "0-50", "quote two", "Anxiety"],
+        ]
+    )
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    doc_ids = {r.document_id for r in results}
+    assert doc_ids == {"doc_a", "doc_b"}
+
+
+def test_dedoose_multiple_rows_same_document(dedoose_codebook, make_dedoose_xlsx):
+    """Multiple excerpts from the same document are grouped into one AnalysisResult."""
+    xlsx = make_dedoose_xlsx(
+        [
+            ["doc_a", "0-50", "first quote", "Anxiety"],
+            ["doc_a", "100-150", "second quote", "Anxiety"],
+        ]
+    )
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert len(results) == 1
+    assert len(results[0].instances) == 2
+
+
+def test_dedoose_confidence_is_none(dedoose_codebook, make_dedoose_xlsx):
+    """Human codings should have confidence=None."""
+    xlsx = make_dedoose_xlsx([["doc_a", "0-50", "a quote", "Anxiety"]])
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert results[0].instances[0].confidence is None
+
+
+def test_dedoose_speaker_id_is_none(dedoose_codebook, make_dedoose_xlsx):
+    """Dedoose excerpts have no speaker — speaker_id should be None."""
+    xlsx = make_dedoose_xlsx([["doc_a", "0-50", "a quote", "Anxiety"]])
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert results[0].instances[0].speaker_id is None
+
+
+def test_dedoose_range_parsing(dedoose_codebook, make_dedoose_xlsx):
+    """Excerpt range '858-1159' is converted to '858:1159'."""
+    xlsx = make_dedoose_xlsx([["doc_a", "858-1159", "a quote", "Anxiety"]])
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert results[0].instances[0].quote_index == "858:1159"
+
+
+def test_dedoose_malformed_range(dedoose_codebook, make_dedoose_xlsx):
+    """Malformed excerpt range results in quote_index=None rather than crashing."""
+    xlsx = make_dedoose_xlsx([["doc_a", "not-a-range", "a quote", "Anxiety"]])
+    results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert results[0].instances[0].quote_index is None
+
+
+def test_dedoose_unknown_construct_warns(dedoose_codebook, make_dedoose_xlsx):
+    """Constructs not in the codebook emit a warning and are skipped."""
+    xlsx = make_dedoose_xlsx([["doc_a", "0-50", "a quote", "Anxiety, UnknownCode"]])
+
+    with pytest.warns(UserWarning, match="not found in codebook"):
+        results = load_dedoose_xlsx(xlsx, dedoose_codebook)
+
+    assert len(results[0].instances) == 1
+    assert results[0].instances[0].construct == "Anxiety"
+
+
+def test_dedoose_file_not_found(dedoose_codebook, tmp_path):
+    """Missing xlsx raises FileLoadError."""
+    with pytest.raises(FileLoadError, match="not found"):
+        load_dedoose_xlsx(tmp_path / "nonexistent.xlsx", dedoose_codebook)
+
+
+def test_dedoose_missing_columns(dedoose_codebook, tmp_path):
+    """Xlsx missing required columns raises FileLoadError."""
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {
+                "Media Title": "doc",
+                "Excerpt Range": "0-10",
+                "Excerpt Copy": "quote",
+            }
+        ]
+    )
+    path = tmp_path / "bad.xlsx"
+    df.to_excel(path, index=False)
+
+    with pytest.raises(FileLoadError, match="missing required columns"):
+        load_dedoose_xlsx(path, dedoose_codebook)

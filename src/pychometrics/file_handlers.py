@@ -5,9 +5,20 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import pychometrics.models
 
-from pychometrics.models import AnalysisResult, APIMetadata, Codebook, ErrorRecord
+from pychometrics.models import (
+    AnalysisResult,
+    APIMetadata,
+    ConstructInstance,
+    ErrorRecord,
+)
+
+HUMAN_CODED_COLS = {
+    "Media Title",
+    "Excerpt Range",
+    "Excerpt Copy",
+    "Codes Applied Combined",
+}
 
 
 class FileLoadError(Exception):
@@ -24,13 +35,17 @@ def load_codebook(codebook_path: Path | str) -> dict:
     2. List format: {"constructs": [{"name": "...", "definition": "..."}]}
 
     Args:
+    ----
         codebook_path: Path to the codebook JSON file.
 
     Returns:
+    -------
         Parsed codebook dictionary.
 
     Raises:
+    ------
         FileLoadError: If the file cannot be loaded or is invalid.
+
     """
     path = Path(codebook_path)
 
@@ -55,13 +70,17 @@ def load_txt_document(file_path: Path) -> str:
     """Load a plain text document.
 
     Args:
+    ----
         file_path: Path to the TXT file.
 
     Returns:
+    -------
         The text content of the file.
 
     Raises:
+    ------
         FileLoadError: If the file cannot be read.
+
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -80,13 +99,17 @@ def load_csv_document(file_path: Path) -> str:
     - Columns named 'speaker', 'interviewer', etc.: Used as speaker IDs
 
     Args:
+    ----
         file_path: Path to the CSV file.
 
     Returns:
+    -------
         Extracted text content from the CSV.
 
     Raises:
+    ------
         FileLoadError: If the file cannot be read or parsed.
+
     """
     try:
         with open(file_path, "r", encoding="utf-8", newline="") as f:
@@ -158,14 +181,18 @@ def load_document(file_path: Path | str) -> tuple[str, str]:
     """Load a document file and extract its text content.
 
     Args:
+    ----
         file_path: Path to the document (CSV or TXT).
 
     Returns:
+    -------
         Tuple of (document_text, document_id).
         Document ID is derived from the filename without extension.
 
     Raises:
+    ------
         FileLoadError: If the file type is unsupported or cannot be loaded.
+
     """
     path = Path(file_path)
 
@@ -189,13 +216,17 @@ def get_document_files(input_dir: Path | str) -> list[Path]:
     """Get all document files from a directory.
 
     Args:
+    ----
         input_dir: Directory to search for documents.
 
     Returns:
+    -------
         List of paths to document files (CSV and TXT).
 
     Raises:
+    ------
         FileLoadError: If the directory doesn't exist or is empty.
+
     """
     path = Path(input_dir)
 
@@ -232,11 +263,14 @@ def create_output_directory(
     - errors/ subdirectory for failed documents
 
     Args:
+    ----
         output_name: Optional name prefix for the output directory.
         base_dir: Optional base directory (defaults to current directory).
 
     Returns:
+    -------
         Path to the created output directory.
+
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
@@ -262,11 +296,14 @@ def save_analysis_result(result: AnalysisResult, output_dir: Path) -> Path:
     """Save an analysis result to a JSON file.
 
     Args:
+    ----
         result: The analysis result to save.
         output_dir: The output directory (containing encodings/).
 
     Returns:
+    -------
         Path to the saved JSON file.
+
     """
     file_path = output_dir / "encodings" / f"{result.document_id}.json"
 
@@ -280,12 +317,15 @@ def save_metadata(metadata: APIMetadata, document_id: str, output_dir: Path) -> 
     """Save API metadata to a JSON file.
 
     Args:
+    ----
         metadata: The API metadata to save.
         document_id: The document identifier.
         output_dir: The output directory (containing metadata/).
 
     Returns:
+    -------
         Path to the saved metadata file.
+
     """
     file_path = output_dir / "metadata" / f"{document_id}_meta.json"
 
@@ -306,6 +346,7 @@ def save_readme(
     """Save the analysis README file.
 
     Args:
+    ----
         output_dir: The output directory.
         model_name: Name of the model used.
         codebook_name: Name/path of the codebook used.
@@ -314,7 +355,9 @@ def save_readme(
         total_documents: Total number of documents processed.
 
     Returns:
+    -------
         Path to the saved README file.
+
     """
     readme_path = output_dir / "README.md"
 
@@ -375,6 +418,128 @@ def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
         json.dump(error.model_dump(), f, indent=2, ensure_ascii=False)
 
     return file_path
+
+
+def load_dedoose_xlsx(
+    xlsx_path: Path | str,
+    codebook_path: Path | str,
+) -> list[AnalysisResult]:
+    """Load and convert a Dedoose xlsx export into a list of AnalysisResult objects.
+
+    Expects the following columns in the Dedoose export:
+    - 'Media Title': document identifier
+    - 'Excerpt Range': character range in 'start-end' format (e.g. '858-1159')
+    - 'Excerpt Copy': the quoted text
+    - 'Codes Applied Combined': comma-separated construct names
+
+    Args:
+    ----
+        xlsx_path: Path to the Dedoose xlsx export file.
+        codebook_path: Path to the codebook JSON file, used to validate construct names.
+
+    Returns:
+    -------
+        List of AnalysisResult objects, one per unique document.
+
+    Raises:
+    ------
+        FileLoadError: If the file cannot be loaded or required columns are missing.
+
+    """
+    try:
+        import openpyxl
+        import pandas as pd
+    except ImportError as e:
+        raise FileLoadError(
+            "openpyxl and pandas are required to load Dedoose xlsx files. "
+            "Install them with: pip install openpyxl pandas"
+        ) from e
+
+    xlsx_path = Path(xlsx_path)
+    if not xlsx_path.exists():
+        raise FileLoadError(f"Dedoose xlsx file not found: {xlsx_path}")
+
+    codebook_data = load_codebook(codebook_path)
+    if "constructs" in codebook_data:
+        valid_constructs = {c["name"].strip() for c in codebook_data["constructs"]}
+    else:
+        valid_constructs = {k.strip() for k in codebook_data.keys()}
+
+    try:
+        df = pd.read_excel(xlsx_path)
+    except Exception as e:
+        raise FileLoadError(f"Could not read Dedoose xlsx file: {e}") from e
+
+    missing = HUMAN_CODED_COLS - set(df.columns)
+    if missing:
+        raise FileLoadError(
+            f"Dedoose xlsx is missing required columns: {missing}. "
+            f"Found columns: {list(df.columns)}"
+        )
+
+    df = df.dropna(subset=list(HUMAN_CODED_COLS))
+
+    def _parse_range(range_str: str) -> str | None:
+        """Convert '858-1159' to '858:1159'."""
+        try:
+            parts = str(range_str).strip().split("-")
+            if len(parts) == 2:
+                return f"{int(parts[0])}:{int(parts[1])}"
+        except (ValueError, AttributeError):
+            pass
+        return None
+
+    def _parse_constructs(codes_str: str) -> list[str]:
+        """Split comma-separated codes, validating each against the codebook."""
+        candidates = [c.strip() for c in str(codes_str).split(",")]
+        matched = []
+        i = 0
+        while i < len(candidates):
+            matched_this = False
+            for j in range(len(candidates), i, -1):
+                merged = ", ".join(candidates[i:j])
+                if merged in valid_constructs:
+                    matched.append(merged)
+                    i = j
+                    matched_this = True
+                    break
+            if not matched_this:
+                import warnings
+
+                warnings.warn(
+                    f"Construct '{candidates[i]}' not found in codebook, skipping.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                i += 1
+        return matched
+
+    results_by_doc: dict[str, list] = {}
+
+    for _, row in df.iterrows():
+        doc_id = str(row["Media Title"]).strip()
+        quote = str(row["Excerpt Copy"]).strip()
+        quote_index = _parse_range(row["Excerpt Range"])
+        constructs = _parse_constructs(row["Codes Applied Combined"])
+
+        if doc_id not in results_by_doc:
+            results_by_doc[doc_id] = []
+
+        for construct in constructs:
+            results_by_doc[doc_id].append(
+                ConstructInstance(
+                    construct=construct,
+                    speaker_id=None,
+                    quote=quote,
+                    quote_index=quote_index,
+                    confidence=None,  # not applicable for human codings
+                )
+            )
+
+    return [
+        AnalysisResult(document_id=doc_id, instances=instances)
+        for doc_id, instances in results_by_doc.items()
+    ]
 
 
 def load_error_records(output_dir: Path) -> list[ErrorRecord]:
