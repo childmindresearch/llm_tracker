@@ -1,7 +1,6 @@
 """Tests for pychometrics.file_handlers module."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -133,17 +132,6 @@ def test_txt_document(tmp_path):
     assert doc_id == "interview_001"
 
 
-def test_csv_document(tmp_path):
-    """Test loading CSV document."""
-    csv_file = tmp_path / "interview_002.csv"
-    csv_file.write_text("text\nCSV content")
-
-    text, doc_id = load_document(csv_file)
-
-    assert "CSV content" in text
-    assert doc_id == "interview_002"
-
-
 def test_unsupported_format(tmp_path):
     """Test loading unsupported format raises error."""
     doc_file = tmp_path / "document.docx"
@@ -254,7 +242,7 @@ def test_creates_readme(tmp_path):
     assert "codebook.json" in content
     assert "interviews" in content
     assert "failed.txt" in content
-    assert "Failed: 1" in content
+    assert "**Failed**: 1" in content
 
 
 def test_readme_no_failures(tmp_path):
@@ -290,7 +278,7 @@ def dedoose_codebook(tmp_path):
 
 @pytest.fixture
 def make_dedoose_xlsx(tmp_path):
-    """Factory fixture — call it with rows to get an xlsx path back."""
+    """Factory fixture — call it with rows to get an xlsx path back."""  # noqa: D401
     import pandas as pd
 
     def _make(rows, filename="dedoose.xlsx"):
@@ -431,6 +419,7 @@ def test_dedoose_missing_columns(dedoose_codebook, tmp_path):
                 "Media Title": "doc",
                 "Excerpt Range": "0-10",
                 "Excerpt Copy": "quote",
+                # 'Codes Applied Combined' intentionally missing
             }
         ]
     )

@@ -2,7 +2,7 @@
 
 from pychometrics.analyzer import PychometricsAnalyzer
 from pychometrics.comparison import (
-    PychometricsComparator,
+    PychometricsComparer,
     compute_summary_tables,
     format_comparison_table,
     format_concatenated,
@@ -16,7 +16,7 @@ __version__ = "0.1.0"
 __all__ = [
     "PychometricsAnalyzer",
     "AnalyzerConfig",
-    "PychometricsComparator",
+    "PychometricsComparer",
     "format_comparison_table",
     "compute_summary_tables",
     "format_weighted_summary",
