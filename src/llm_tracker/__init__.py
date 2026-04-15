@@ -1,7 +1,7 @@
 """Pychometrics: Psychological construct identification using LLM analysis."""
 
-from pychometrics.analyzer import PychometricsAnalyzer
-from pychometrics.comparison import (
+from llm_tracker.analyzer import PychometricsAnalyzer
+from llm_tracker.comparison import (
     PychometricsComparer,
     compute_summary_tables,
     format_comparison_table,
@@ -9,8 +9,8 @@ from pychometrics.comparison import (
     format_per_interview,
     format_weighted_summary,
 )
-from pychometrics.config import AnalyzerConfig
-from pychometrics.models import AnalysisResult, Codebook, ConstructInstance, ErrorRecord
+from llm_tracker.config import AnalyzerConfig
+from llm_tracker.models import AnalysisResult, Codebook, ConstructInstance, ErrorRecord
 
 __version__ = "0.1.0"
 __all__ = [

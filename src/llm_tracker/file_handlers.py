@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pychometrics.models import (
+from llm_tracker.models import (
     AnalysisResult,
     APIMetadata,
     ConstructInstance,
@@ -407,7 +407,7 @@ All documents processed successfully.
 
 def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
     """Save an error record to the errors directory."""
-    from pychometrics.models import ErrorRecord
+    from llm_tracker.models import ErrorRecord
 
     errors_dir = output_dir / "errors"
     errors_dir.mkdir(exist_ok=True)
@@ -418,6 +418,134 @@ def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
         json.dump(error.model_dump(), f, indent=2, ensure_ascii=False)
 
     return file_path
+
+
+def _get_valid_constructs_from_codebook(codebook_data: dict) -> set[str]:
+    """Extract valid construct names from a loaded codebook."""
+    if "constructs" in codebook_data:
+        return {c["name"].strip() for c in codebook_data["constructs"]}
+    return {k.strip() for k in codebook_data.keys()}
+
+
+def _parse_dedoose_range(range_str: object) -> str | None:
+    """Convert a Dedoose range like '858-1159' to '858:1159'."""
+    try:
+        parts = str(range_str).strip().split("-")
+        if len(parts) == 2:
+            return f"{int(parts[0])}:{int(parts[1])}"
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
+def _parse_dedoose_constructs(
+    codes_str: object, valid_constructs: set[str]
+) -> list[str]:
+    """Split comma-separated Dedoose codes and validate against the codebook."""
+    import warnings
+
+    candidates = [c.strip() for c in str(codes_str).split(",") if c.strip()]
+    matched: list[str] = []
+    i = 0
+
+    while i < len(candidates):
+        matched_this = False
+        for j in range(len(candidates), i, -1):
+            merged = ", ".join(candidates[i:j])
+            if merged in valid_constructs:
+                matched.append(merged)
+                i = j
+                matched_this = True
+                break
+        if not matched_this:
+            warnings.warn(
+                f"Construct '{candidates[i]}' not found in codebook, skipping.",
+                UserWarning,
+                stacklevel=2,
+            )
+            i += 1
+
+    return matched
+
+
+def load_dedoose_dataframe(
+    df: "pd.DataFrame",
+    codebook_path: Path | str,
+) -> list[AnalysisResult]:
+    """Load and convert a Dedoose dataframe into AnalysisResult objects.
+
+    Expects the following columns in the Dedoose dataframe:
+    - 'Media Title': document identifier
+    - 'Excerpt Range': character range in 'start-end' format (e.g. '858-1159')
+    - 'Excerpt Copy': the quoted text
+    - 'Codes Applied Combined': comma-separated construct names
+
+    Args:
+    ----
+        df: pandas DataFrame containing a Dedoose export.
+        codebook_path: Path to the codebook JSON file, used to validate construct names.
+
+    Returns:
+    -------
+        List of AnalysisResult objects, one per unique document.
+
+    Raises:
+    ------
+        FileLoadError: If the dataframe is missing required columns.
+    """
+    try:
+        import pandas as pd
+    except ImportError as e:
+        raise FileLoadError(
+            "pandas is required to load Dedoose dataframes. "
+            "Install it with: pip install pandas"
+        ) from e
+
+    if not isinstance(df, pd.DataFrame):
+        raise FileLoadError(
+            "load_dedoose_dataframe expected a pandas DataFrame as input."
+        )
+
+    codebook_data = load_codebook(codebook_path)
+    valid_constructs = _get_valid_constructs_from_codebook(codebook_data)
+
+    missing = HUMAN_CODED_COLS - set(df.columns)
+    if missing:
+        raise FileLoadError(
+            f"Dedoose dataframe is missing required columns: {missing}. "
+            f"Found columns: {list(df.columns)}"
+        )
+
+    cleaned = df.dropna(subset=list(HUMAN_CODED_COLS))
+
+    results_by_doc: dict[str, list[ConstructInstance]] = {}
+
+    for _, row in cleaned.iterrows():
+        doc_id = str(row["Media Title"]).strip()
+        quote = str(row["Excerpt Copy"]).strip()
+        quote_index = _parse_dedoose_range(row["Excerpt Range"])
+        constructs = _parse_dedoose_constructs(
+            row["Codes Applied Combined"], valid_constructs
+        )
+
+        if doc_id not in results_by_doc:
+            results_by_doc[doc_id] = []
+
+        for construct in constructs:
+            results_by_doc[doc_id].append(
+                ConstructInstance(
+                    construct=construct,
+                    speaker_id=None,
+                    quote=quote,
+                    quote_index=quote_index,
+                    confidence=None,  # not applicable for human codings
+                )
+            )
+
+    return [
+        AnalysisResult(document_id=doc_id, instances=instances)
+        for doc_id, instances in results_by_doc.items()
+    ]
 
 
 def load_dedoose_xlsx(
@@ -447,7 +575,7 @@ def load_dedoose_xlsx(
 
     """
     try:
-        import openpyxl
+        import openpyxl  # noqa: F401
         import pandas as pd
     except ImportError as e:
         raise FileLoadError(
@@ -459,92 +587,17 @@ def load_dedoose_xlsx(
     if not xlsx_path.exists():
         raise FileLoadError(f"Dedoose xlsx file not found: {xlsx_path}")
 
-    codebook_data = load_codebook(codebook_path)
-    if "constructs" in codebook_data:
-        valid_constructs = {c["name"].strip() for c in codebook_data["constructs"]}
-    else:
-        valid_constructs = {k.strip() for k in codebook_data.keys()}
-
     try:
         df = pd.read_excel(xlsx_path)
     except Exception as e:
         raise FileLoadError(f"Could not read Dedoose xlsx file: {e}") from e
 
-    missing = HUMAN_CODED_COLS - set(df.columns)
-    if missing:
-        raise FileLoadError(
-            f"Dedoose xlsx is missing required columns: {missing}. "
-            f"Found columns: {list(df.columns)}"
-        )
-
-    df = df.dropna(subset=list(HUMAN_CODED_COLS))
-
-    def _parse_range(range_str: str) -> str | None:
-        """Convert '858-1159' to '858:1159'."""
-        try:
-            parts = str(range_str).strip().split("-")
-            if len(parts) == 2:
-                return f"{int(parts[0])}:{int(parts[1])}"
-        except (ValueError, AttributeError):
-            pass
-        return None
-
-    def _parse_constructs(codes_str: str) -> list[str]:
-        """Split comma-separated codes, validating each against the codebook."""
-        candidates = [c.strip() for c in str(codes_str).split(",")]
-        matched = []
-        i = 0
-        while i < len(candidates):
-            matched_this = False
-            for j in range(len(candidates), i, -1):
-                merged = ", ".join(candidates[i:j])
-                if merged in valid_constructs:
-                    matched.append(merged)
-                    i = j
-                    matched_this = True
-                    break
-            if not matched_this:
-                import warnings
-
-                warnings.warn(
-                    f"Construct '{candidates[i]}' not found in codebook, skipping.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                i += 1
-        return matched
-
-    results_by_doc: dict[str, list] = {}
-
-    for _, row in df.iterrows():
-        doc_id = str(row["Media Title"]).strip()
-        quote = str(row["Excerpt Copy"]).strip()
-        quote_index = _parse_range(row["Excerpt Range"])
-        constructs = _parse_constructs(row["Codes Applied Combined"])
-
-        if doc_id not in results_by_doc:
-            results_by_doc[doc_id] = []
-
-        for construct in constructs:
-            results_by_doc[doc_id].append(
-                ConstructInstance(
-                    construct=construct,
-                    speaker_id=None,
-                    quote=quote,
-                    quote_index=quote_index,
-                    confidence=None,  # not applicable for human codings
-                )
-            )
-
-    return [
-        AnalysisResult(document_id=doc_id, instances=instances)
-        for doc_id, instances in results_by_doc.items()
-    ]
+    return load_dedoose_dataframe(df, codebook_path)
 
 
 def load_error_records(output_dir: Path) -> list[ErrorRecord]:
     """Load all error records from an output directory."""
-    from pychometrics.models import ErrorRecord
+    from llm_tracker.models import ErrorRecord
 
     errors_dir = output_dir / "errors"
 
