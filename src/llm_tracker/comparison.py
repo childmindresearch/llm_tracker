@@ -525,12 +525,17 @@ def compute_pr_auc(df: "pd.DataFrame") -> dict[str, float | None]:
 
 def compute_summary_tables(
     df: "pd.DataFrame",
+    include_cohens_kappa: bool = False,
 ) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
     """Compute per-interview, concatenated, and weighted summary tables.
 
     Args:
         df: Concatenated output of format_comparison_table() across all documents.
             Must contain columns: doc_id, construct, tp, fp, fn.
+        include_cohens_kappa: If True, include the cohens_kappa column in all three
+            output DataFrames. Defaults to False because Cohen's Kappa requires a
+            true-negative count, which is not observable in open-ended span coding;
+            PABAK is reported instead.
 
     Returns:
         Tuple of (per_interview, concatenated, weighted_summary) DataFrames.
@@ -542,7 +547,10 @@ def compute_summary_tables(
             and [min, max] of each metric across documents. Weight = union per document.
             Includes n_docs and p5/p95 of instance counts.
     """
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if include_cohens_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
 
     total_docs = df["doc_id"].nunique()
     all_constructs = df["construct"].unique().tolist()
@@ -553,6 +561,8 @@ def compute_summary_tables(
     )
     metric_rows = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in grouped.itertuples()]
     metric_df = pd.DataFrame(metric_rows)
+    if not include_cohens_kappa:
+        metric_df = metric_df.drop(columns="cohens_kappa", errors="ignore")
     per_interview = pd.concat(
         [grouped[["doc_id", "construct"]].reset_index(drop=True), metric_df], axis=1
     )
@@ -593,10 +603,15 @@ def compute_summary_tables(
     concat_metrics = [
         _metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()
     ]
+    concat_metrics_df = pd.DataFrame(concat_metrics)
+    if not include_cohens_kappa:
+        concat_metrics_df = concat_metrics_df.drop(
+            columns="cohens_kappa", errors="ignore"
+        )
     concatenated = pd.concat(
         [
             concat_input[["construct"]].reset_index(drop=True),
-            pd.DataFrame(concat_metrics),
+            concat_metrics_df,
         ],
         axis=1,
     )
@@ -692,6 +707,11 @@ def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
     Returns:
         The per_interview DataFrame unchanged (formatting is handled by pandas display).
     """
+    kappa_line = (
+        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
+        if "cohens_kappa" in per_interview.columns
+        else ""
+    )
     print(
         "Per-Interview Metrics\n"
         "---------------------\n"
@@ -706,7 +726,7 @@ def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity  : TP / (TP + FN)\n"
         "  precision    : TP / (TP + FP)\n"
         "  f1           : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak        : prevalence-adjusted kappa\n"
         "  pr_auc       : area under precision-recall curve; NaN where insufficient label classes\n"
     )
@@ -722,6 +742,12 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
     Returns:
         DataFrame with one display column per metric and interviews_with_construct [p5–p95] column.
     """
+    has_kappa = "cohens_kappa_median" in weighted_summary.columns
+    kappa_line = (
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        if has_kappa
+        else ""
+    )
     print(
         "Weighted Summary\n"
         "----------------\n"
@@ -733,12 +759,15 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
         "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
         "  f1                                : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
         "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
         "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
     )
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if has_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
     display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
 
     for metric in METRICS:
@@ -784,6 +813,12 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
         DataFrame with metric columns rounded to 2dp and interviews_with_construct [p5-p95] column.
         Separate p5 and p95 columns are dropped.
     """
+    has_kappa = "cohens_kappa" in concatenated.columns
+    kappa_line = (
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        if has_kappa
+        else ""
+    )
     print(
         "Concatenated Metrics\n"
         "--------------------\n"
@@ -795,12 +830,15 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
         "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
         "  f1                                : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
         "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
         "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
     )
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if has_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
     display = concatenated[["construct", "tp", "fp", "fn"]].copy()
 
     for metric in METRICS:

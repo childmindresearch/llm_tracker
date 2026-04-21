@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pychometrics.models import (
+from llm_tracker.models import (
     AnalysisResult,
     APIMetadata,
     Codebook,

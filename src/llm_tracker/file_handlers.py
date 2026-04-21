@@ -2,6 +2,7 @@
 
 import csv
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -12,13 +13,6 @@ from llm_tracker.models import (
     ConstructInstance,
     ErrorRecord,
 )
-
-HUMAN_CODED_COLS = {
-    "Media Title",
-    "Excerpt Range",
-    "Excerpt Copy",
-    "Codes Applied Combined",
-}
 
 
 class FileLoadError(Exception):
@@ -421,16 +415,49 @@ def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
 
 
 def _get_valid_constructs_from_codebook(codebook_data: dict) -> set[str]:
-    """Extract valid construct names from a loaded codebook."""
+    """Extract valid construct names from a loaded codebook.
+
+    Supports both codebook formats:
+    - List format: {"constructs": [{"name": "...", ...}, ...]}
+    - Dict format: {"construct_name": {"definition": "...", ...}, ...}
+    """
     if "constructs" in codebook_data:
         return {c["name"].strip() for c in codebook_data["constructs"]}
     return {k.strip() for k in codebook_data.keys()}
 
 
-def _parse_dedoose_range(range_str: object) -> str | None:
-    """Convert a Dedoose range like '858-1159' to '858:1159'."""
+def _parse_range(range_str: object, range_format: str) -> str | None:
+    """Convert a character range string into the internal 'start:end' format.
+
+    Args:
+    ----
+        range_str: The raw value from the range column.
+        range_format: One of:
+            - 'dash':  values like '858-1159' (e.g. Dedoose exports)
+            - 'colon': values like '858:1159' (internal format; pass-through)
+
+    Returns:
+    -------
+        String in 'start:end' format, or None if the value could not be parsed.
+    """
+    if range_str is None:
+        return None
+
+    raw = str(range_str).strip()
+    if not raw:
+        return None
+
+    if range_format == "dash":
+        separator = "-"
+    elif range_format == "colon":
+        separator = ":"
+    else:
+        raise ValueError(
+            f"Unknown range_format '{range_format}'. Use 'dash' or 'colon'."
+        )
+
     try:
-        parts = str(range_str).strip().split("-")
+        parts = raw.split(separator)
         if len(parts) == 2:
             return f"{int(parts[0])}:{int(parts[1])}"
     except (ValueError, AttributeError):
@@ -438,95 +465,159 @@ def _parse_dedoose_range(range_str: object) -> str | None:
     return None
 
 
-def _parse_dedoose_constructs(
-    codes_str: object, valid_constructs: set[str]
-) -> list[str]:
-    """Split comma-separated Dedoose codes and validate against the codebook."""
-    import warnings
+def _split_constructs(codes_str: object, separator: str) -> list[str]:
+    """Split a cell of construct names on the given separator.
 
-    candidates = [c.strip() for c in str(codes_str).split(",") if c.strip()]
-    matched: list[str] = []
-    i = 0
-
-    while i < len(candidates):
-        matched_this = False
-        for j in range(len(candidates), i, -1):
-            merged = ", ".join(candidates[i:j])
-            if merged in valid_constructs:
-                matched.append(merged)
-                i = j
-                matched_this = True
-                break
-        if not matched_this:
-            warnings.warn(
-                f"Construct '{candidates[i]}' not found in codebook, skipping.",
-                UserWarning,
-                stacklevel=2,
-            )
-            i += 1
-
-    return matched
+    Returns a list of stripped, non-empty construct names. No codebook
+    validation is performed here — use ``validate_against_codebook`` on the
+    resulting AnalysisResult objects if you want to check membership.
+    """
+    if codes_str is None:
+        return []
+    return [c.strip() for c in str(codes_str).split(separator) if c.strip()]
 
 
-def load_dedoose_dataframe(
+@dataclass
+class ValidationReport:
+    """Report from validating a set of AnalysisResult objects against a codebook.
+
+    Attributes
+    ----------
+        valid: True if every construct on every instance is present in the codebook.
+        unknown_constructs: Mapping from document_id -> list of construct names
+            found on that document's instances that are NOT in the codebook.
+            Duplicates within a document are preserved so frequency is visible.
+        total_instances: Total number of ConstructInstance objects checked.
+        total_unknown: Total count of instances whose construct name was unknown.
+        known_constructs: The set of construct names extracted from the codebook,
+            for reference.
+    """
+
+    valid: bool
+    unknown_constructs: dict[str, list[str]]
+    total_instances: int
+    total_unknown: int
+    known_constructs: set[str]
+
+    def __str__(self) -> str:
+        """Human-readable summary of the report."""
+        lines = [
+            "Codebook validation report",
+            "--------------------------",
+            f"Status          : {'PASS' if self.valid else 'FAIL'}",
+            f"Total instances : {self.total_instances}",
+            f"Unknown         : {self.total_unknown}",
+            f"Codebook size   : {len(self.known_constructs)} constructs",
+        ]
+        if self.unknown_constructs:
+            lines.append("")
+            lines.append("Unknown constructs by document:")
+            for doc_id, names in self.unknown_constructs.items():
+                from collections import Counter
+
+                counts = Counter(names)
+                pretty = ", ".join(
+                    f"{name!r} (x{n})" if n > 1 else repr(name)
+                    for name, n in counts.most_common()
+                )
+                lines.append(f"  {doc_id}: {pretty}")
+        return "\n".join(lines)
+
+
+def load_human_dataframe(
     df: "pd.DataFrame",
-    codebook_path: Path | str,
+    *,
+    doc_id_col: str = "Media Title",
+    quote_col: str = "Excerpt Copy",
+    range_col: str | None = "Excerpt Range",
+    construct_col: str = "Codes Applied Combined",
+    range_format: str = "dash",
+    construct_separator: str = ",",
 ) -> list[AnalysisResult]:
-    """Load and convert a Dedoose dataframe into AnalysisResult objects.
+    """Convert a human-coded DataFrame into AnalysisResult objects.
 
-    Expects the following columns in the Dedoose dataframe:
-    - 'Media Title': document identifier
-    - 'Excerpt Range': character range in 'start-end' format (e.g. '858-1159')
-    - 'Excerpt Copy': the quoted text
-    - 'Codes Applied Combined': comma-separated construct names
+    This is a pure reshape operation — it does NOT validate construct names
+    against any codebook. Run ``validate_against_codebook`` afterwards if
+    you want to check codebook membership.
+
+    The resulting AnalysisResult objects follow the same schema as LLM output,
+    so they can be passed directly into the comparison pipeline.
+
+    Default column names and formats match Dedoose exports so the common case
+    is zero-configuration. Override any of them for other tools.
 
     Args:
     ----
-        df: pandas DataFrame containing a Dedoose export.
-        codebook_path: Path to the codebook JSON file, used to validate construct names.
+        df: pandas DataFrame where each row is one human-coded excerpt.
+        doc_id_col: Name of the column holding the document identifier.
+            Default: "Media Title" (Dedoose).
+        quote_col: Name of the column holding the excerpt text.
+            Default: "Excerpt Copy" (Dedoose).
+        range_col: Name of the column holding the character range, or None
+            if the dataframe has no range column.
+            Default: "Excerpt Range" (Dedoose).
+        construct_col: Name of the column holding the construct name(s).
+            Default: "Codes Applied Combined" (Dedoose).
+        range_format: How to parse the range column. One of:
+            - "dash":  values like "858-1159" (e.g. Dedoose)
+            - "colon": values like "858:1159" (internal format)
+            Ignored if range_col is None. Default: "dash".
+        construct_separator: Delimiter used when a single row carries multiple
+            constructs. Default: ",". Change this if your construct names
+            contain commas.
 
     Returns:
     -------
-        List of AnalysisResult objects, one per unique document.
+        List of AnalysisResult objects, one per unique document_id. Each
+        row with N constructs becomes N ConstructInstance entries. Rows
+        missing any required field are skipped.
 
     Raises:
     ------
-        FileLoadError: If the dataframe is missing required columns.
+        FileLoadError: If pandas is not installed, the input is not a
+            DataFrame, or required columns are missing.
     """
     try:
         import pandas as pd
     except ImportError as e:
         raise FileLoadError(
-            "pandas is required to load Dedoose dataframes. "
+            "pandas is required to load human-coded dataframes. "
             "Install it with: pip install pandas"
         ) from e
 
     if not isinstance(df, pd.DataFrame):
         raise FileLoadError(
-            "load_dedoose_dataframe expected a pandas DataFrame as input."
+            "load_human_dataframe expected a pandas DataFrame as input."
         )
 
-    codebook_data = load_codebook(codebook_path)
-    valid_constructs = _get_valid_constructs_from_codebook(codebook_data)
+    required = [doc_id_col, quote_col, construct_col]
+    if range_col is not None:
+        required.append(range_col)
 
-    missing = HUMAN_CODED_COLS - set(df.columns)
+    missing = [c for c in required if c not in df.columns]
     if missing:
         raise FileLoadError(
-            f"Dedoose dataframe is missing required columns: {missing}. "
+            f"DataFrame is missing required columns: {missing}. "
             f"Found columns: {list(df.columns)}"
         )
 
-    cleaned = df.dropna(subset=list(HUMAN_CODED_COLS))
+    # Drop rows where any required field (other than range) is missing.
+    # We keep rows missing only the range — the instance gets quote_index=None.
+    subset_for_dropna = [doc_id_col, quote_col, construct_col]
+    cleaned = df.dropna(subset=subset_for_dropna)
 
     results_by_doc: dict[str, list[ConstructInstance]] = {}
 
     for _, row in cleaned.iterrows():
-        doc_id = str(row["Media Title"]).strip()
-        quote = str(row["Excerpt Copy"]).strip()
-        quote_index = _parse_dedoose_range(row["Excerpt Range"])
-        constructs = _parse_dedoose_constructs(
-            row["Codes Applied Combined"], valid_constructs
-        )
+        doc_id = str(row[doc_id_col]).strip()
+        quote = str(row[quote_col]).strip()
+
+        if range_col is not None:
+            quote_index = _parse_range(row[range_col], range_format)
+        else:
+            quote_index = None
+
+        constructs = _split_constructs(row[construct_col], construct_separator)
 
         if doc_id not in results_by_doc:
             results_by_doc[doc_id] = []
@@ -548,22 +639,174 @@ def load_dedoose_dataframe(
     ]
 
 
-def load_dedoose_xlsx(
-    xlsx_path: Path | str,
-    codebook_path: Path | str,
-) -> list[AnalysisResult]:
-    """Load and convert a Dedoose xlsx export into a list of AnalysisResult objects.
+_READERS: dict[str, str] = {
+    ".csv": "read_csv",
+    ".tsv": "read_csv",
+    ".xlsx": "read_excel",
+    ".xls": "read_excel",
+}
 
-    Expects the following columns in the Dedoose export:
-    - 'Media Title': document identifier
-    - 'Excerpt Range': character range in 'start-end' format (e.g. '858-1159')
-    - 'Excerpt Copy': the quoted text
-    - 'Codes Applied Combined': comma-separated construct names
+# Tried in order when the user doesn't pass an explicit encoding.
+# latin-1 is last because it can decode any byte sequence, guaranteeing
+# we never crash on encoding — at worst we get some mojibake.
+_ENCODING_FALLBACKS = ("utf-8", "utf-8-sig", "cp1252", "latin-1")
+
+
+def _read_with_encoding_fallback(reader, path: Path, *, is_text: bool, **read_kwargs):
+    """Call a pandas reader, trying common encodings if none is specified.
+
+    For binary readers (``read_excel``) encoding doesn't apply and this just
+    calls the reader once. For text readers (``read_csv``), if the user did
+    not pass an ``encoding`` kwarg, we try ``_ENCODING_FALLBACKS`` in order
+    and emit a warning if we had to fall back past the first.
+    """
+    # Binary format (xlsx/xls) — encoding is not a thing.
+    if not is_text:
+        try:
+            return reader(path, **read_kwargs)
+        except Exception as e:
+            raise FileLoadError(f"Could not read {path}: {e}") from e
+
+    # User specified an encoding — respect it, don't second-guess.
+    if "encoding" in read_kwargs:
+        try:
+            return reader(path, **read_kwargs)
+        except Exception as e:
+            raise FileLoadError(f"Could not read {path}: {e}") from e
+
+    # No encoding specified — try fallbacks in order.
+    last_error: Exception | None = None
+    for i, enc in enumerate(_ENCODING_FALLBACKS):
+        try:
+            df = reader(path, encoding=enc, **read_kwargs)
+            if i > 0:
+                import warnings
+
+                warnings.warn(
+                    f"Could not read {path.name} as utf-8; "
+                    f"fell back to {enc!r}. "
+                    f"If the file should be utf-8, it may be corrupted; "
+                    f"otherwise pass encoding={enc!r} explicitly to silence "
+                    f"this warning.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            return df
+        except UnicodeDecodeError as e:
+            last_error = e
+            continue
+        except Exception as e:
+            # Non-encoding read error — no point retrying with different encodings.
+            raise FileLoadError(f"Could not read {path}: {e}") from e
+
+    # latin-1 never raises UnicodeDecodeError, so in practice we never get
+    # here — but be defensive.
+    raise FileLoadError(
+        f"Could not read {path} with any of the fallback encodings "
+        f"{list(_ENCODING_FALLBACKS)}: {last_error}"
+    ) from last_error
+
+
+def save_human_results(
+    results: list[AnalysisResult],
+    output_name: str,
+    *,
+    base_dir: Path | str | None = None,
+    source_file: Path | str | None = None,
+) -> Path:
+    """Save human-coded AnalysisResult objects to disk.
+
+    Writes one JSON file per document under ``<output_dir>/encodings/`` using
+    the same layout that ``analyze_directory`` / ``analyze_csv`` produce, so
+    the resulting directory can be passed directly to
+    ``PychometricsComparer.compare_directories``.
 
     Args:
     ----
-        xlsx_path: Path to the Dedoose xlsx export file.
-        codebook_path: Path to the codebook JSON file, used to validate construct names.
+        results: List of AnalysisResult objects, e.g. from ``load_human_coding``.
+        output_name: Name prefix for the output directory. A timestamp is
+            appended automatically (matching the analyzer's behaviour).
+        base_dir: Directory to create the output folder in. Defaults to CWD.
+        source_file: Optional path to the original input file; recorded in
+            the README if provided.
+
+    Returns:
+    -------
+        Path to the created output directory.
+    """
+    output_path = create_output_directory(output_name=output_name, base_dir=base_dir)
+
+    for result in results:
+        save_analysis_result(result, output_path)
+
+    # Minimal README so the directory is self-describing.
+    readme_path = output_path / "README.md"
+    n_instances = sum(len(r.instances) for r in results)
+    content = (
+        f"# Human Codings\n\n"
+        f"- **Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"- **Source**: {source_file if source_file else 'in-memory AnalysisResult objects'}\n"
+        f"- **Documents**: {len(results)}\n"
+        f"- **Total instances**: {n_instances}\n\n"
+        f"## Structure\n\n"
+        f"- `encodings/` - One JSON file per document, matching the schema "
+        f"produced by `PychometricsAnalyzer.analyze_*`.\n"
+    )
+    readme_path.write_text(content, encoding="utf-8")
+
+    return output_path
+
+
+def load_human_coding(
+    path: Path | str,
+    *,
+    doc_id_col: str = "Media Title",
+    quote_col: str = "Excerpt Copy",
+    range_col: str | None = "Excerpt Range",
+    construct_col: str = "Codes Applied Combined",
+    range_format: str = "dash",
+    construct_separator: str = ",",
+    save_dir: str | None = None,
+    **read_kwargs,
+) -> list[AnalysisResult]:
+    """Load human-coded data from a CSV or xlsx file.
+
+    Dispatches on the file extension (.csv, .tsv, .xlsx, .xls), reads the file
+    into a DataFrame with pandas, then passes it to ``load_human_dataframe``.
+    Extra ``**read_kwargs`` are forwarded to the underlying pandas reader so
+    you can override encoding, delimiters, sheet names, etc.
+
+    Default column names match Dedoose exports, so most Dedoose users can
+    call this with just ``load_human_coding("export.csv")``. Override the
+    column name kwargs for other tools.
+
+    No codebook validation is performed here — run ``validate_against_codebook``
+    on the result if you want to check construct membership.
+
+    Args:
+    ----
+        path: Path to the input file. Extension determines the reader:
+            - .csv, .tsv  -> pandas.read_csv  (.tsv gets sep='\\t' by default)
+            - .xlsx, .xls -> pandas.read_excel
+        doc_id_col: See ``load_human_dataframe``.
+        quote_col: See ``load_human_dataframe``.
+        range_col: See ``load_human_dataframe``.
+        construct_col: See ``load_human_dataframe``.
+        range_format: See ``load_human_dataframe``.
+        construct_separator: See ``load_human_dataframe``.
+        save_dir: Optional name prefix for persisting the loaded codings to
+            disk, matching the layout produced by ``analyze_directory`` /
+            ``analyze_csv``. A timestamp is appended automatically. When set,
+            the path to the created directory is printed so it can be passed
+            to ``PychometricsComparer.compare_directories`` if desired.
+        **read_kwargs: Forwarded to ``pd.read_csv`` or ``pd.read_excel``.
+            Use this for things like ``encoding='latin-1'`` on weird CSVs or
+            ``sheet_name='Sheet2'`` on multi-sheet xlsx files.
+
+            For CSV/TSV reads, if no ``encoding`` is specified, the loader
+            tries utf-8, utf-8-sig, cp1252, and latin-1 in order and emits
+            a warning if it has to fall back past utf-8. Pass ``encoding=...``
+            explicitly to skip the fallback.
 
     Returns:
     -------
@@ -571,28 +814,133 @@ def load_dedoose_xlsx(
 
     Raises:
     ------
-        FileLoadError: If the file cannot be loaded or required columns are missing.
-
+        FileLoadError: If the file doesn't exist, the extension is unsupported,
+            the file can't be read, or required columns are missing.
     """
     try:
-        import openpyxl  # noqa: F401
         import pandas as pd
     except ImportError as e:
         raise FileLoadError(
-            "openpyxl and pandas are required to load Dedoose xlsx files. "
-            "Install them with: pip install openpyxl pandas"
+            "pandas is required to load human coding files. "
+            "Install it with: pip install pandas"
         ) from e
 
-    xlsx_path = Path(xlsx_path)
-    if not xlsx_path.exists():
-        raise FileLoadError(f"Dedoose xlsx file not found: {xlsx_path}")
+    path = Path(path)
+    if not path.exists():
+        raise FileLoadError(f"Human coding file not found: {path}")
 
-    try:
-        df = pd.read_excel(xlsx_path)
-    except Exception as e:
-        raise FileLoadError(f"Could not read Dedoose xlsx file: {e}") from e
+    suffix = path.suffix.lower()
+    reader_name = _READERS.get(suffix)
+    if reader_name is None:
+        raise FileLoadError(
+            f"Unsupported file extension '{suffix}'. " f"Supported: {sorted(_READERS)}"
+        )
 
-    return load_dedoose_dataframe(df, codebook_path)
+    if reader_name == "read_excel":
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError as e:
+            raise FileLoadError(
+                "openpyxl is required to read .xlsx files. "
+                "Install it with: pip install openpyxl"
+            ) from e
+
+    # For .tsv default to tab separator unless the caller overrides it.
+    if suffix == ".tsv" and "sep" not in read_kwargs:
+        read_kwargs["sep"] = "\t"
+
+    reader = getattr(pd, reader_name)
+    df = _read_with_encoding_fallback(
+        reader, path, is_text=(reader_name == "read_csv"), **read_kwargs
+    )
+
+    results = load_human_dataframe(
+        df,
+        doc_id_col=doc_id_col,
+        quote_col=quote_col,
+        range_col=range_col,
+        construct_col=construct_col,
+        range_format=range_format,
+        construct_separator=construct_separator,
+    )
+
+    if save_dir is not None:
+        output_path = save_human_results(
+            results, output_name=save_dir, source_file=path
+        )
+        print(f"Human codings saved to: {output_path}")
+
+    return results
+
+
+def validate_against_codebook(
+    results: "list[AnalysisResult] | AnalysisResult",
+    codebook: "dict | Path | str",
+    *,
+    strict: bool = False,
+) -> ValidationReport:
+    """Check that every construct on every instance appears in the codebook.
+
+    This is decoupled from the loaders so you can load data once and validate
+    against different codebooks, or skip validation entirely.
+
+    Args:
+    ----
+        results: A single AnalysisResult or a list of them (e.g. the output of
+            ``load_human_dataframe`` or ``load_dedoose_xlsx``).
+        codebook: Either an already-loaded codebook dict or a path to a
+            codebook JSON file.
+        strict: If True, raise FileLoadError when any unknown construct is
+            found. If False (default), return a report and leave the
+            decision to the caller.
+
+    Returns:
+    -------
+        A ValidationReport describing any mismatches.
+
+    Raises:
+    ------
+        FileLoadError: If ``strict=True`` and unknown constructs are found,
+            or if the codebook path cannot be loaded.
+    """
+    if isinstance(results, AnalysisResult):
+        results = [results]
+
+    if isinstance(codebook, (str, Path)):
+        codebook_data = load_codebook(codebook)
+    else:
+        codebook_data = codebook
+
+    known = _get_valid_constructs_from_codebook(codebook_data)
+
+    unknown_by_doc: dict[str, list[str]] = {}
+    total_instances = 0
+    total_unknown = 0
+
+    for result in results:
+        for instance in result.instances:
+            total_instances += 1
+            name = instance.construct.strip()
+            if name not in known:
+                unknown_by_doc.setdefault(result.document_id, []).append(name)
+                total_unknown += 1
+
+    report = ValidationReport(
+        valid=total_unknown == 0,
+        unknown_constructs=unknown_by_doc,
+        total_instances=total_instances,
+        total_unknown=total_unknown,
+        known_constructs=known,
+    )
+
+    if strict and not report.valid:
+        raise FileLoadError(
+            f"Codebook validation failed: {total_unknown} instance(s) "
+            f"across {len(unknown_by_doc)} document(s) have constructs "
+            f"not in the codebook.\n\n{report}"
+        )
+
+    return report
 
 
 def load_error_records(output_dir: Path) -> list[ErrorRecord]:
