@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pychometrics.config import AnalyzerConfig
-from pychometrics.file_handlers import (
+from llm_tracker.config import AnalyzerConfig
+from llm_tracker.file_handlers import (
     FileLoadError,
     create_output_directory,
     get_document_files,
@@ -20,8 +20,8 @@ from pychometrics.file_handlers import (
     save_metadata,
     save_readme,
 )
-from pychometrics.models import AnalysisResult, APIMetadata, ErrorRecord
-from pychometrics.prompting import PromptingError, prompt_for_constructs
+from llm_tracker.models import AnalysisResult, APIMetadata, ErrorRecord
+from llm_tracker.prompting import PromptingError, prompt_for_constructs
 
 
 class PychometricsAnalyzer:

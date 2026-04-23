@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from pychometrics.prompting import (
+from llm_tracker.prompting import (
     ResponseParseError,
     construct_prompt,
     parse_llm_response,

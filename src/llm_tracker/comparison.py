@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
-from pychometrics.config import AnalyzerConfig
-from pychometrics.prompting import PromptingError, call_llm_api
+from llm_tracker.config import AnalyzerConfig
+from llm_tracker.prompting import PromptingError, call_llm_api
 
 
 MATCH_PROMPT_TEMPLATE = """You are reconciling two sets of quotes for the SAME \
@@ -525,12 +525,17 @@ def compute_pr_auc(df: "pd.DataFrame") -> dict[str, float | None]:
 
 def compute_summary_tables(
     df: "pd.DataFrame",
+    include_cohens_kappa: bool = False,
 ) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
     """Compute per-interview, concatenated, and weighted summary tables.
 
     Args:
         df: Concatenated output of format_comparison_table() across all documents.
             Must contain columns: doc_id, construct, tp, fp, fn.
+        include_cohens_kappa: If True, include the cohens_kappa column in all three
+            output DataFrames. Defaults to False because Cohen's Kappa requires a
+            true-negative count, which is not observable in open-ended span coding;
+            PABAK is reported instead.
 
     Returns:
         Tuple of (per_interview, concatenated, weighted_summary) DataFrames.
@@ -542,7 +547,10 @@ def compute_summary_tables(
             and [min, max] of each metric across documents. Weight = union per document.
             Includes n_docs and p5/p95 of instance counts.
     """
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if include_cohens_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
 
     total_docs = df["doc_id"].nunique()
     all_constructs = df["construct"].unique().tolist()
@@ -553,6 +561,8 @@ def compute_summary_tables(
     )
     metric_rows = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in grouped.itertuples()]
     metric_df = pd.DataFrame(metric_rows)
+    if not include_cohens_kappa:
+        metric_df = metric_df.drop(columns="cohens_kappa", errors="ignore")
     per_interview = pd.concat(
         [grouped[["doc_id", "construct"]].reset_index(drop=True), metric_df], axis=1
     )
@@ -593,10 +603,15 @@ def compute_summary_tables(
     concat_metrics = [
         _metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()
     ]
+    concat_metrics_df = pd.DataFrame(concat_metrics)
+    if not include_cohens_kappa:
+        concat_metrics_df = concat_metrics_df.drop(
+            columns="cohens_kappa", errors="ignore"
+        )
     concatenated = pd.concat(
         [
             concat_input[["construct"]].reset_index(drop=True),
-            pd.DataFrame(concat_metrics),
+            concat_metrics_df,
         ],
         axis=1,
     )
@@ -692,6 +707,11 @@ def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
     Returns:
         The per_interview DataFrame unchanged (formatting is handled by pandas display).
     """
+    kappa_line = (
+        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
+        if "cohens_kappa" in per_interview.columns
+        else ""
+    )
     print(
         "Per-Interview Metrics\n"
         "---------------------\n"
@@ -706,7 +726,7 @@ def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity  : TP / (TP + FN)\n"
         "  precision    : TP / (TP + FP)\n"
         "  f1           : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak        : prevalence-adjusted kappa\n"
         "  pr_auc       : area under precision-recall curve; NaN where insufficient label classes\n"
     )
@@ -722,6 +742,12 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
     Returns:
         DataFrame with one display column per metric and interviews_with_construct [p5–p95] column.
     """
+    has_kappa = "cohens_kappa_median" in weighted_summary.columns
+    kappa_line = (
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        if has_kappa
+        else ""
+    )
     print(
         "Weighted Summary\n"
         "----------------\n"
@@ -733,12 +759,15 @@ def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
         "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
         "  f1                                : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
         "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
         "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
     )
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if has_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
     display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
 
     for metric in METRICS:
@@ -784,6 +813,12 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
         DataFrame with metric columns rounded to 2dp and interviews_with_construct [p5-p95] column.
         Separate p5 and p95 columns are dropped.
     """
+    has_kappa = "cohens_kappa" in concatenated.columns
+    kappa_line = (
+        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        if has_kappa
+        else ""
+    )
     print(
         "Concatenated Metrics\n"
         "--------------------\n"
@@ -795,12 +830,15 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
         "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
         "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
         "  f1                                : harmonic mean of sensitivity and precision\n"
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
+        f"{kappa_line}"
         "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
         "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
         "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
     )
-    METRICS = ["sensitivity", "precision", "f1", "cohens_kappa", "pabak"]
+    METRICS = ["sensitivity", "precision", "f1"]
+    if has_kappa:
+        METRICS.append("cohens_kappa")
+    METRICS.append("pabak")
     display = concatenated[["construct", "tp", "fp", "fn"]].copy()
 
     for metric in METRICS:
@@ -824,6 +862,76 @@ def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
     )
 
     return display
+
+
+def _normalize_result_input(
+    data: dict | list | "AnalysisResult" | list["AnalysisResult"],
+) -> dict[str, dict]:
+    """Normalize supported result inputs into a dict keyed by document_id.
+
+    Supported inputs:
+    - dict[str, dict] from analyze_directory()/analyze_csv()
+    - single AnalysisResult
+    - list[AnalysisResult]
+    - single JSON-like result dict with document_id/instances
+    - list of JSON-like result dicts
+    """
+    if hasattr(data, "document_id") and hasattr(data, "instances"):
+        data = [data]
+
+    if isinstance(data, dict):
+        if "document_id" in data and "instances" in data:
+            document_id = str(data["document_id"])
+            return {
+                document_id: {
+                    "document_id": document_id,
+                    "instances": data.get("instances", []),
+                }
+            }
+
+        normalized: dict[str, dict] = {}
+        for doc_id, result in data.items():
+            if hasattr(result, "model_dump"):
+                result = result.model_dump()
+            elif hasattr(result, "to_dict"):
+                result = result.to_dict()
+
+            if not isinstance(result, dict):
+                raise ComparisonError(
+                    f"Unsupported result type for document '{doc_id}': {type(result)}"
+                )
+
+            normalized[str(doc_id)] = {
+                "document_id": str(result.get("document_id", doc_id)),
+                "instances": result.get("instances", []),
+            }
+        return normalized
+
+    if isinstance(data, list):
+        normalized: dict[str, dict] = {}
+        for item in data:
+            if hasattr(item, "model_dump"):
+                item = item.model_dump()
+            elif hasattr(item, "to_dict"):
+                item = item.to_dict()
+
+            if not isinstance(item, dict):
+                raise ComparisonError(
+                    f"Unsupported list item type in comparison input: {type(item)}"
+                )
+            if "document_id" not in item:
+                raise ComparisonError(
+                    "Each in-memory result item must include a 'document_id'."
+                )
+
+            document_id = str(item["document_id"])
+            normalized[document_id] = {
+                "document_id": document_id,
+                "instances": item.get("instances", []),
+            }
+        return normalized
+
+    raise ComparisonError(f"Unsupported comparison input type: {type(data)}")
 
 
 class PychometricsComparer:
@@ -1005,6 +1113,63 @@ class PychometricsComparer:
 
         return comparisons
 
+    def _write_comparison_results(
+        self,
+        results: dict[str, dict],
+        output_dir: str,
+    ) -> Path:
+        """Write comparison results to a timestamped output directory."""
+        output_path = _create_comparison_output_directory(
+            output_name=output_dir, base_dir=Path.cwd()
+        )
+
+        for doc_id, result in results.items():
+            out_file = output_path / "comparisons" / f"{doc_id}.json"
+            with open(out_file, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=2, ensure_ascii=False)
+
+        return output_path
+
+    def compare_results(
+        self,
+        human_results: dict | list | "AnalysisResult" | list["AnalysisResult"],
+        llm_results: dict | list | "AnalysisResult" | list["AnalysisResult"],
+        output_dir: str | None = None,
+    ) -> dict[str, dict]:
+        """Compare human and LLM results already loaded in memory.
+
+        Args:
+            human_results: Human-coded results in one of the supported normalized
+                formats (AnalysisResult object(s), dict output from analyzer,
+                or JSON-like dict/list structure).
+            llm_results: LLM-coded results in one of the supported normalized formats.
+            output_dir: Optional output directory name prefix. If provided,
+                comparison JSON files are written to disk.
+
+        Returns:
+            Dict mapping document_id to comparison result.
+        """
+        human_normalized = _normalize_result_input(human_results)
+        llm_normalized = _normalize_result_input(llm_results)
+        all_doc_ids = sorted(set(human_normalized) | set(llm_normalized))
+
+        results: dict[str, dict] = {}
+
+        for doc_id in all_doc_ids:
+            human_data = human_normalized.get(doc_id, {})
+            llm_data = llm_normalized.get(doc_id, {})
+
+            comparisons = self._compare_instances(
+                human_data.get("instances", []), llm_data.get("instances", [])
+            )
+
+            results[doc_id] = {"document_id": doc_id, "comparisons": comparisons}
+
+        if output_dir:
+            self._write_comparison_results(results, output_dir)
+
+        return results
+
     def compare_documents(
         self,
         human_json: Path | str,
@@ -1020,21 +1185,13 @@ class PychometricsComparer:
             or Path(human_json).stem
         )
 
-        comparisons = self._compare_instances(
-            human_data.get("instances", []), llm_data.get("instances", [])
+        results = self.compare_results(
+            {"document_id": document_id, "instances": human_data.get("instances", [])},
+            {"document_id": document_id, "instances": llm_data.get("instances", [])},
+            output_dir=output_dir,
         )
 
-        result = {"document_id": document_id, "comparisons": comparisons}
-
-        if output_dir:
-            output_path = _create_comparison_output_directory(
-                output_name=output_dir, base_dir=Path.cwd()
-            )
-            out_file = output_path / "comparisons" / f"{document_id}.json"
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-
-        return result
+        return results[document_id]
 
     def compare_directories(
         self,
@@ -1054,31 +1211,29 @@ class PychometricsComparer:
         llm_files = {p.stem: p for p in llm_path.glob("*.json")}
         all_doc_ids = sorted(set(human_files) | set(llm_files))
 
-        results: dict[str, dict] = {}
-
-        output_path: Path | None = None
-        if output_dir:
-            output_path = _create_comparison_output_directory(
-                output_name=output_dir, base_dir=Path.cwd()
-            )
+        human_results: dict[str, dict] = {}
+        llm_results: dict[str, dict] = {}
 
         for doc_id in all_doc_ids:
             human_file = human_files.get(doc_id)
             llm_file = llm_files.get(doc_id)
 
-            human_data = _load_result_json(human_file) if human_file else {}
-            llm_data = _load_result_json(llm_file) if llm_file else {}
+            if human_file:
+                human_data = _load_result_json(human_file)
+                human_results[doc_id] = {
+                    "document_id": doc_id,
+                    "instances": human_data.get("instances", []),
+                }
 
-            comparisons = self._compare_instances(
-                human_data.get("instances", []), llm_data.get("instances", [])
-            )
+            if llm_file:
+                llm_data = _load_result_json(llm_file)
+                llm_results[doc_id] = {
+                    "document_id": doc_id,
+                    "instances": llm_data.get("instances", []),
+                }
 
-            result = {"document_id": doc_id, "comparisons": comparisons}
-            results[doc_id] = result
-
-            if output_path is not None:
-                out_file = output_path / "comparisons" / f"{doc_id}.json"
-                with open(out_file, "w", encoding="utf-8") as f:
-                    json.dump(result, f, indent=2, ensure_ascii=False)
-
-        return results
+        return self.compare_results(
+            human_results,
+            llm_results,
+            output_dir=output_dir,
+        )

@@ -12,8 +12,8 @@ from typing import Any, Optional
 
 import httpx
 
-from pychometrics.config import AnalyzerConfig
-from pychometrics.models import AnalysisResult, APIMetadata, ConstructInstance
+from llm_tracker.config import AnalyzerConfig
+from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
 
 
 class PromptingError(Exception):
