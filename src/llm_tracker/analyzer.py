@@ -1,7 +1,4 @@
-"""Main analyzer module for pychometrics."""
-
-from pathlib import Path
-from typing import Optional
+"""Main analyzer module for llm_tracker."""
 
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +21,7 @@ from llm_tracker.models import AnalysisResult, APIMetadata, ErrorRecord
 from llm_tracker.prompting import PromptingError, prompt_for_constructs
 
 
-class PychometricsAnalyzer:
+class LLMTrackerAnalyzer:
     """Analyzer for identifying psychological constructs in text documents."""
 
     def __init__(

@@ -1,8 +1,8 @@
-"""Pychometrics: Psychological construct identification using LLM analysis."""
+"""LLM Tracker: Psychological construct identification using LLM analysis."""
 
-from llm_tracker.analyzer import PychometricsAnalyzer
+from llm_tracker.analyzer import LLMTrackerAnalyzer
 from llm_tracker.comparison import (
-    PychometricsComparer,
+    LLMTrackerComparer,
     compute_summary_tables,
     format_comparison_table,
     format_concatenated,
@@ -14,9 +14,9 @@ from llm_tracker.models import AnalysisResult, Codebook, ConstructInstance, Erro
 
 __version__ = "0.1.0"
 __all__ = [
-    "PychometricsAnalyzer",
+    "LLMTrackerAnalyzer",
     "AnalyzerConfig",
-    "PychometricsComparer",
+    "LLMTrackerComparer",
     "format_comparison_table",
     "compute_summary_tables",
     "format_weighted_summary",

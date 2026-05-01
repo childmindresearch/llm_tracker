@@ -1,4 +1,4 @@
-"""File handling utilities for pychometrics."""
+"""File handling utilities for llm_tracker."""
 
 import csv
 import json
@@ -271,7 +271,7 @@ def create_output_directory(
     if output_name:
         dir_name = f"{output_name}_{timestamp}"
     else:
-        dir_name = f"pychometrics_output_{timestamp}"
+        dir_name = f"llm_tracker_output_{timestamp}"
 
     if base_dir:
         output_dir = Path(base_dir) / dir_name
@@ -355,7 +355,7 @@ def save_readme(
     """
     readme_path = output_dir / "README.md"
 
-    content = f"""# Pychometrics Analysis Results
+    content = f"""# LLM Tracker Analysis Results
 
 ## Analysis Information
 
@@ -719,7 +719,7 @@ def save_human_results(
     Writes one JSON file per document under ``<output_dir>/encodings/`` using
     the same layout that ``analyze_directory`` / ``analyze_csv`` produce, so
     the resulting directory can be passed directly to
-    ``PychometricsComparer.compare_directories``.
+    ``LLMTrackerComparer.compare_directories``.
 
     Args:
     ----
@@ -750,7 +750,7 @@ def save_human_results(
         f"- **Total instances**: {n_instances}\n\n"
         f"## Structure\n\n"
         f"- `encodings/` - One JSON file per document, matching the schema "
-        f"produced by `PychometricsAnalyzer.analyze_*`.\n"
+        f"produced by `LLMTrackerAnalyzer.analyze_*`.\n"
     )
     readme_path.write_text(content, encoding="utf-8")
 
@@ -798,7 +798,7 @@ def load_human_coding(
             disk, matching the layout produced by ``analyze_directory`` /
             ``analyze_csv``. A timestamp is appended automatically. When set,
             the path to the created directory is printed so it can be passed
-            to ``PychometricsComparer.compare_directories`` if desired.
+            to ``LLMTrackerComparer.compare_directories`` if desired.
         **read_kwargs: Forwarded to ``pd.read_csv`` or ``pd.read_excel``.
             Use this for things like ``encoding='latin-1'`` on weird CSVs or
             ``sheet_name='Sheet2'`` on multi-sheet xlsx files.

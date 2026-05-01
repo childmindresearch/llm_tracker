@@ -1,4 +1,4 @@
-"""LLM prompting functionality for pychometrics.
+"""LLM prompting functionality for llm_tracker.
 
 This module handles all interactions with the OpenRouter API, including
 constructing prompts, making API requests, parsing responses, and
@@ -232,7 +232,7 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/pychometrics",
-        "X-Title": "Pychometrics",
+        "X-Title": "LLM Tracker",
     }
 
     payload = {

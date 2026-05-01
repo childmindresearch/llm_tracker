@@ -1,4 +1,4 @@
-"""Configuration and constants for pychometrics package."""
+"""Configuration and constants for llm_tracker package."""
 
 import os
 from dataclasses import dataclass, field
@@ -90,7 +90,7 @@ REQUEST_TIMEOUT = 120.0
 
 @dataclass
 class AnalyzerConfig:
-    """Configuration for the PychometricsAnalyzer.
+    """Configuration for the LLMTrackerAnalyzer.
 
     Attributes
     ----------

@@ -1,4 +1,4 @@
-"""Pytest fixtures for pychometrics tests."""
+"""Pytest fixtures for llm_tracker tests."""
 
 import json
 from pathlib import Path

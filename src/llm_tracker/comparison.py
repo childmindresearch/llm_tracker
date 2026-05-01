@@ -934,7 +934,7 @@ def _normalize_result_input(
     raise ComparisonError(f"Unsupported comparison input type: {type(data)}")
 
 
-class PychometricsComparer:
+class LLMTrackerComparer:
     """Compare human-coded and LLM-coded results using an LLM matcher."""
 
     def __init__(

@@ -1,4 +1,4 @@
-"""Data models for pychometrics package.
+"""Data models for llm_tracker package.
 
 This module defines the Pydantic models used throughout the package for
 type validation and serialization of analysis results, construct instances,

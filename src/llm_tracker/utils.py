@@ -1,4 +1,4 @@
-"""Utility functions for pychometrics."""
+"""Utility functions for llm_tracker."""
 
 from __future__ import annotations
 

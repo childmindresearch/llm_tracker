@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "pychometrics"
+name = "llm-tracker"
 version = "0.1.0"
 description = "A Python package for identifying psychological constructs in text using LLM analysis"
-authors = ["Pychometrics Team"]
+authors = ["LLM Tracker Team"]
 readme = "README.md"
 license = "MIT"
-packages = [{include = "pychometrics", from = "src"}]
+packages = [{include = "llm_tracker", from = "src"}]
 keywords = ["psychology", "nlp", "llm", "text-analysis", "qualitative-research"]
 classifiers = [
     "Development Status :: 3 - Alpha",

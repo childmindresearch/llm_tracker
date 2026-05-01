@@ -1,4 +1,4 @@
-"""Tests for pychometrics.models module."""
+"""Tests for llm_tracker.models module."""
 
 import pytest
 from pydantic import ValidationError

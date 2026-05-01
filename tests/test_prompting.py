@@ -1,4 +1,4 @@
-"""Tests for pychometrics.prompting module."""
+"""Tests for llm_tracker.prompting module."""
 
 import json
 

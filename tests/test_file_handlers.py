@@ -1,10 +1,10 @@
-"""Tests for pychometrics.file_handlers module."""
+"""Tests for llm_tracker.file_handlers module."""
 
 import json
 from pathlib import Path
 
 import pytest
-from pychometrics.file_handlers import (
+from llm_tracker.file_handlers import (
     FileLoadError,
     ValidationReport,
     create_output_directory,
@@ -21,7 +21,7 @@ from pychometrics.file_handlers import (
     save_readme,
     validate_against_codebook,
 )
-from pychometrics.models import AnalysisResult, APIMetadata, ConstructInstance
+from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
 
 
 def test_valid_codebook(tmp_path) -> None:
@@ -192,7 +192,7 @@ def test_default_name(tmp_path):
     """Test default name when none provided."""
     output_dir = create_output_directory(None, tmp_path)
 
-    assert "pychometrics_output_" in output_dir.name
+    assert "llm_tracker_output_" in output_dir.name
 
 
 def test_saves_json(tmp_path):
