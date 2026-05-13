@@ -10,6 +10,7 @@ from llm_tracker.comparison import (
     format_weighted_summary,
 )
 from llm_tracker.config import AnalyzerConfig
+from llm_tracker.corpus_summary import print_summary, summarize_corpus
 from llm_tracker.models import AnalysisResult, Codebook, ConstructInstance, ErrorRecord
 
 __version__ = "0.1.0"
@@ -26,4 +27,6 @@ __all__ = [
     "ErrorRecord",
     "format_concatenated",
     "format_per_interview",
+    "print_summary",
+    "summarize_corpus",
 ]
