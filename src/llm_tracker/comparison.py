@@ -1,13 +1,9 @@
 """Compare human and LLM construct codings.
 
-The comparison pipeline is intentionally DataFrame-first:
-
-1. ``LLMTrackerComparer.compare_results`` aligns human and LLM quote instances.
+1. LLMTrackerComparer.compare_results aligns human and LLM quote instances.
 2. It returns one row per matched, human-only, or LLM-only instance.
-3. ``compute_summary_tables`` computes agreement metrics from those rows.
+3. compute_summary_tables computes agreement metrics from those rows.
 """
-
-from __future__ import annotations
 
 import json
 from datetime import datetime
@@ -161,21 +157,60 @@ def _save_comparison_table(df: pd.DataFrame, output_dir: str) -> Path:
 def _group_by_construct(
     instances: list[ConstructInstance],
 ) -> dict[str, list[ConstructInstance]]:
+    """Group one document's construct instances by construct name.
+
+    The comparison step matches human and LLM quotes within the same construct,
+    so this converts a flat list of instances into construct specific buckets.
+
+    Args:
+        instances: Construct instances from one document.
+
+    Returns:
+        A dictionary mapping each construct name to the instances coded for
+        that construct.
+    """
     grouped: dict[str, list[ConstructInstance]] = {}
     for item in instances:
-        grouped.setdefault(item.construct, []).append(item)
+        if item.construct not in grouped:
+            grouped[item.construct] = []
+        grouped[item.construct].append(item)
     return grouped
 
 
 def _format_quotes(quotes: list[ConstructInstance]) -> str:
-    return "\n".join(
-        f'{i}. "{item.quote}" '
-        f"(indices: {item.quote_index if item.quote_index else 'N/A'})"
-        for i, item in enumerate(quotes)
-    )
+    """Format construct instances as a numbered quote list for the matcher.
+
+    The matcher prompt refers to quotes by  index, so each quote is
+    numbered and includes its character span when available.
+
+    Args:
+        quotes: Construct instances for one construct in one document.
+
+    Returns:
+        A numbered list of quotes and their source indices seperated by new lines.
+    """
+    lines = []
+    for index, item in enumerate(quotes):
+        quote_index = item.quote_index or "N/A"
+        lines.append(f'{index}. "{item.quote}" (indices: {quote_index})')
+
+    return "\n".join(lines)
 
 
 def _parse_match_response(response_text: str) -> list[dict]:
+    """Parse and normalize the matcher LLM's JSON response.
+
+    Args:
+        response_text: Raw text returned by the matcher LLM.
+
+    Returns:
+        A list of valid match dictionaries with integer quote indices,
+        boolean paraphrase flags, and match confidence 0.0-1.0.
+
+    Raises:
+        ComparisonError: If the response is not valid JSON or does not contain
+            a `matches` list.
+    """
     try:
         data = json.loads(response_text)
     except json.JSONDecodeError as e:
@@ -185,37 +220,72 @@ def _parse_match_response(response_text: str) -> list[dict]:
     if not isinstance(matches, list):
         raise ComparisonError("Matcher response must contain a 'matches' list.")
 
-    parsed = []
+    parsed_matches = []
     for match in matches:
         if not isinstance(match, dict):
             continue
+
         try:
+            human_index = int(match["human_index"])
+            llm_index = int(match["llm_index"])
+            paraphrase = bool(match.get("paraphrase", False))
             confidence = float(match.get("match_confidence", 0.5))
-            parsed.append(
+            confidence = max(0.0, min(1.0, confidence))
+
+            parsed_matches.append(
                 {
-                    "human_index": int(match["human_index"]),
-                    "llm_index": int(match["llm_index"]),
-                    "paraphrase": bool(match.get("paraphrase", False)),
-                    "match_confidence": max(0.0, min(1.0, confidence)),
+                    "human_index": human_index,
+                    "llm_index": llm_index,
+                    "paraphrase": paraphrase,
+                    "match_confidence": confidence,
                 }
             )
         except (KeyError, TypeError, ValueError):
             continue
-    return parsed
+
+    return parsed_matches
 
 
 def _parse_span(span: str | None) -> tuple[int, int] | None:
+    """Parse a start:end character span.
+
+    Args:
+        span: Character span string e.g. "10:25".
+
+    Returns:
+        A (start, end) tuple, or None if the span is missing, malformed,
+        or has an end index before its start index.
+    """
     if not span:
         return None
-    try:
-        start, end = map(int, span.split(":"))
-    except (AttributeError, ValueError):
+
+    parts = span.split(":")
+    if len(parts) != 2:
         return None
-    return (start, end) if end >= start else None
+
+    try:
+        start = int(parts[0])
+        end = int(parts[1])
+    except ValueError:
+        return None
+
+    if end < start:
+        return None
+
+    return start, end
 
 
 def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float | None:
-    """Compute Jaccard overlap between two ``start:end`` character spans."""
+    """Compute overlap between human and LLM character spans.
+
+    Args:
+        human_idx: Human coded quote span in start:end format.
+        llm_idx: LLM coded quote span in start:end format.
+
+    Returns:
+        Jaccard overlap between the two spans, or None if either span is
+        missing or malformed.
+    """
     human_span = _parse_span(human_idx)
     llm_span = _parse_span(llm_idx)
     if human_span is None or llm_span is None:
@@ -223,19 +293,38 @@ def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float |
 
     h_start, h_end = human_span
     l_start, l_end = llm_span
-    h_len = h_end - h_start
-    l_len = l_end - l_start
-    if h_len == 0 and l_len == 0:
+    human_length = h_end - h_start
+    llm_length = l_end - l_start
+
+    if human_length == 0 and llm_length == 0:
         return 1.0
-    if h_len == 0 or l_len == 0:
+    if human_length == 0 or llm_length == 0:
         return 0.0
 
-    overlap = max(0, min(h_end, l_end) - max(h_start, l_start))
-    union = h_len + l_len - overlap
-    return overlap / union if union else 0.0
+    overlap_start = max(h_start, l_start)
+    overlap_end = min(h_end, l_end)
+    overlap_length = max(0, overlap_end - overlap_start)
+    union_length = human_length + llm_length - overlap_length
+
+    if union_length == 0:
+        return 0.0
+
+    return overlap_length / union_length
 
 
 def _base_row(doc_id: str, construct: str, status: str) -> dict:
+    """Create a default row for the comparison table.
+
+    Args:
+        doc_id: Document identifier shared by the human and LLM results.
+        construct: Construct being compared.
+        status: Match status for the row: matched, human_only, or
+            llm_only.
+
+    Returns:
+        A comparison row with identifying fields filled in, optional fields set
+        to None, and metric count fields initialized to zero.
+    """
     return {
         "doc_id": doc_id,
         "construct": construct,
@@ -276,19 +365,35 @@ class LLMTrackerComparer:
         construct: str,
         human: list[ConstructInstance],
         llm: list[ConstructInstance],
-    ):
+    ) -> list[dict]:
+        """Ask the matcher LLM to align quotes for one construct.
+
+        Args:
+            construct: Construct name shared by the quote lists.
+            human: Human coded instances for this construct.
+            llm: LLM coded instances for this construct.
+
+        Returns:
+            Parsed matcher results describing which human and LLM quote indices
+            refer to the same passage or idea.
+
+        Raises:
+            ComparisonError: If the matcher fails after all retry attempts.
+        """
         prompt = MATCH_PROMPT_TEMPLATE.format(
             construct=construct,
             human_quotes=_format_quotes(human),
             llm_quotes=_format_quotes(llm),
         )
         last_error = None
-        for _ in range(self.config.max_retries + 1):
+        total_attempts = self.config.max_retries + 1
+        for _ in range(total_attempts):
             try:
                 response_text, _metadata = call_llm_api(prompt, self.config)
                 return _parse_match_response(response_text)
             except (PromptingError, ComparisonError) as e:
                 last_error = e
+
         raise ComparisonError(f"Matcher failed for '{construct}': {last_error}")
 
     def _compare_construct(
@@ -298,46 +403,61 @@ class LLMTrackerComparer:
         human: list[ConstructInstance],
         llm: list[ConstructInstance],
     ) -> list[dict]:
+        """Compare human and LLM instances for one construct in one document.
+
+        Args:
+            doc_id: Document identifier for the compared instances.
+            construct: Construct being compared.
+            human: Human coded instances for this construct.
+            llm: LLM coded instances for this construct.
+
+        Returns:
+            Row dictionaries for matched, human only, and LLM only instances.
+            These rows feed the comparison DataFrame and metric counts.
+        """
+
+        def human_only_row(item: ConstructInstance) -> dict:
+            row = _base_row(doc_id, construct, "human_only")
+            row.update(
+                human_quote=item.quote,
+                human_indices=item.quote_index,
+                human_confidence=item.confidence,
+                fn=1,
+            )
+            return row
+
+        def llm_only_row(item: ConstructInstance) -> dict:
+            row = _base_row(doc_id, construct, "llm_only")
+            row.update(
+                llm_quote=item.quote,
+                llm_indices=item.quote_index,
+                llm_confidence=item.confidence,
+                fp=1,
+            )
+            return row
+
         rows = []
         if not human:
-            for item in llm:
-                row = _base_row(doc_id, construct, "llm_only")
-                row.update(
-                    llm_quote=item.quote,
-                    llm_indices=item.quote_index,
-                    llm_confidence=item.confidence,
-                    fp=1,
-                )
-                rows.append(row)
-            return rows
+            return [llm_only_row(item) for item in llm]
 
         if not llm:
-            for item in human:
-                row = _base_row(doc_id, construct, "human_only")
-                row.update(
-                    human_quote=item.quote,
-                    human_indices=item.quote_index,
-                    human_confidence=item.confidence,
-                    fn=1,
-                )
-                rows.append(row)
-            return rows
+            return [human_only_row(item) for item in human]
 
         used_human: set[int] = set()
         used_llm: set[int] = set()
         for match in self._match_construct(construct, human, llm):
-            h_idx = match["human_index"]
-            l_idx = match["llm_index"]
+            human_index = match["human_index"]
+            llm_index = match["llm_index"]
             if (
-                h_idx in used_human
-                or l_idx in used_llm
-                or not 0 <= h_idx < len(human)
-                or not 0 <= l_idx < len(llm)
+                human_index in used_human
+                or llm_index in used_llm
+                or not 0 <= human_index < len(human)
+                or not 0 <= llm_index < len(llm)
             ):
                 continue
 
-            human_item = human[h_idx]
-            llm_item = llm[l_idx]
+            human_item = human[human_index]
+            llm_item = llm[llm_index]
             row = _base_row(doc_id, construct, "matched")
             row.update(
                 human_quote=human_item.quote,
@@ -354,30 +474,16 @@ class LLMTrackerComparer:
                 tp=1,
             )
             rows.append(row)
-            used_human.add(h_idx)
-            used_llm.add(l_idx)
+            used_human.add(human_index)
+            used_llm.add(llm_index)
 
-        for i, item in enumerate(human):
-            if i not in used_human:
-                row = _base_row(doc_id, construct, "human_only")
-                row.update(
-                    human_quote=item.quote,
-                    human_indices=item.quote_index,
-                    human_confidence=item.confidence,
-                    fn=1,
-                )
-                rows.append(row)
+        for human_index, item in enumerate(human):
+            if human_index not in used_human:
+                rows.append(human_only_row(item))
 
-        for i, item in enumerate(llm):
-            if i not in used_llm:
-                row = _base_row(doc_id, construct, "llm_only")
-                row.update(
-                    llm_quote=item.quote,
-                    llm_indices=item.quote_index,
-                    llm_confidence=item.confidence,
-                    fp=1,
-                )
-                rows.append(row)
+        for llm_index, item in enumerate(llm):
+            if llm_index not in used_llm:
+                rows.append(llm_only_row(item))
 
         return rows
 
@@ -387,19 +493,32 @@ class LLMTrackerComparer:
         llm_results: dict[str, AnalysisResult],
         output_dir: str | None = None,
     ) -> pd.DataFrame:
-        """Compare loaded human and LLM results and return row-level outcomes."""
+        """Compare human and LLM results across all documents.
+
+        Args:
+            human_results: Human coded results keyed by document ID.
+            llm_results: LLM coded results keyed by document ID.
+            output_dir: Optional base name for saving the row level comparison
+                table to a timestamped CSV folder.
+
+        Returns:
+            Comparison DataFrame with one row per matched,
+            human only, or LLM only construct instance.
+        """
         rows = []
 
-        for doc_id in sorted(set(human_results) | set(llm_results)):
+        document_ids = sorted(set(human_results) | set(llm_results))
+        for doc_id in document_ids:
             human_result = human_results.get(doc_id)
             llm_result = llm_results.get(doc_id)
             human_instances = human_result.instances if human_result else []
             llm_instances = llm_result.instances if llm_result else []
+
             human_by_construct = _group_by_construct(human_instances)
             llm_by_construct = _group_by_construct(llm_instances)
-            constructs = sorted(set(human_by_construct) | set(llm_by_construct))
+            construct_names = sorted(set(human_by_construct) | set(llm_by_construct))
 
-            for construct in constructs:
+            for construct in construct_names:
                 rows.extend(
                     self._compare_construct(
                         doc_id,
@@ -410,6 +529,8 @@ class LLMTrackerComparer:
                 )
 
         df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
+        if not df.empty:
+            df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(int)
         if output_dir:
             _save_comparison_table(df, output_dir)
         return df
@@ -420,7 +541,21 @@ class LLMTrackerComparer:
         llm_json: Path | str,
         output_dir: str | None = None,
     ) -> pd.DataFrame:
-        """Compare one human result JSON with one LLM result JSON."""
+        """Compare one saved human result JSON with one saved LLM result JSON.
+
+        Args:
+            human_json: Path to the saved human result JSON file.
+            llm_json: Path to the saved LLM result JSON file.
+            output_dir: Optional base name for saving the comparison table.
+
+        Returns:
+            Comparison DataFrame with one row per matched, human only, or LLM
+            only construct instance.
+
+        Raises:
+            ComparisonError: If either JSON file cannot be loaded or matching
+            fails.
+        """
         human_result = _load_result_json(human_json)
         llm_result = _load_result_json(llm_json)
         doc_id = human_result.document_id
@@ -436,7 +571,21 @@ class LLMTrackerComparer:
         llm_dir: Path | str,
         output_dir: str | None = None,
     ) -> pd.DataFrame:
-        """Compare all JSON results in two analyzer output directories."""
+        """Compare saved human and LLM result directories.
+
+        Args:
+            human_dir: Path to a human result directory or encodings folder.
+            llm_dir: Path to an LLM result directory or encodings folder.
+            output_dir: Optional base name for saving the comparison table.
+
+        Returns:
+            Comparison DataFrame with one row per matched, human only, or LLM
+            only construct instance.
+
+        Raises:
+            ComparisonError: If either directory cannot be loaded or matching
+            fails.
+        """
         human_files = _result_files(human_dir)
         llm_files = _result_files(llm_dir)
         human_results: dict[str, AnalysisResult] = {}
@@ -451,27 +600,41 @@ class LLMTrackerComparer:
         return self.compare_results(human_results, llm_results, output_dir=output_dir)
 
 
-def _divide(numerator: float, denominator: float) -> float | None:
-    return numerator / denominator if denominator else None
+def _metrics(tp: int, fp: int, fn: int) -> dict:
+    """Compute agreement metrics from true positive, false positive, and false negative counts.
 
+    Args:
+        tp: Number of matched human and LLM instances.
+        fp: Number of LLM only instances.
+        fn: Number of human only instances.
 
-def _metrics(tp: float, fp: float, fn: float) -> dict:
-    tp, fp, fn = int(tp), int(fp), int(fn)
+    Returns:
+        Dictionary containing the input counts, union count, sensitivity,
+        precision, F1, and PABAK. Metrics with zero denominators are None.
+    """
     union = tp + fp + fn
-    observed_agreement = _divide(tp, union)
+    observed_agreement = tp / union if union else None
     return {
         "tp": tp,
         "fp": fp,
         "fn": fn,
         "union": union,
-        "sensitivity": _divide(tp, tp + fn),
-        "precision": _divide(tp, tp + fp),
-        "f1": _divide(2 * tp, 2 * tp + fp + fn),
+        "sensitivity": tp / (tp + fn) if tp + fn else None,
+        "precision": tp / (tp + fp) if tp + fp else None,
+        "f1": 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None,
         "pabak": None if observed_agreement is None else 2 * observed_agreement - 1,
     }
 
 
 def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
+    """Compute agreement metrics for each row of count totals.
+
+    Args:
+        counts: DataFrame with tp, fp, and fn columns.
+
+    Returns:
+        DataFrame containing counts and agreement metrics for each input row.
+    """
     if counts.empty:
         return pd.DataFrame(columns=["tp", "fp", "fn", "union", *METRICS])
     return pd.DataFrame(
@@ -482,158 +645,219 @@ def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
 def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
     """Compute average precision from LLM coding confidence.
 
-    Matched rows are correct LLM predictions. LLM-only rows are incorrect LLM
-    predictions. Human-only rows are excluded because they are missed items, not
-    LLM predictions. The ranking score is ``llm_confidence`` from the coding
-    step, not matcher confidence.
+    Matched rows are correct LLM predictions. LLM only rows are incorrect LLM
+    predictions. Human only rows are excluded because they are missed items, not
+    LLM predictions. The ranking score is llm_confidence from the coding step,
+    not matcher confidence.
+
+    Args:
+        df: Row level comparison DataFrame.
+
+    Returns:
+        Average precision scores for the full comparison table and for each
+        construct. A value is None unless the group has at least one matched
+        prediction and at least one LLM only prediction.
     """
     if df.empty:
         return {"Overall": None}
 
-    preds = df[df["status"].isin(["matched", "llm_only"])].copy()
-    if preds.empty:
+    predictions = df[df["status"].isin(["matched", "llm_only"])].copy()
+    if predictions.empty:
         return {"Overall": None}
-    preds["label"] = (preds["status"] == "matched").astype(int)
-    preds["score"] = pd.to_numeric(preds["llm_confidence"], errors="coerce")
-    preds = preds.dropna(subset=["score"])
 
-    results = {}
-    groups = [("Overall", preds)] + [
-        (construct, group) for construct, group in preds.groupby("construct")
-    ]
-    for name, group in groups:
-        if len(set(group["label"])) < 2:
-            results[name] = None
-        else:
-            results[name] = round(
-                float(average_precision_score(group["label"], group["score"])), 4
-            )
+    predictions["label"] = (predictions["status"] == "matched").astype(int)
+    predictions["score"] = pd.to_numeric(predictions["llm_confidence"], errors="coerce")
+    predictions = predictions.dropna(subset=["score"])
+
+    def score_group(group: pd.DataFrame) -> float | None:
+        if group["label"].nunique() < 2:
+            return None
+        score = average_precision_score(group["label"], group["score"])
+        return round(float(score), 4)
+
+    results = {"Overall": score_group(predictions)}
+    for construct, group in predictions.groupby("construct"):
+        results[construct] = score_group(group)
+
     return results
 
 
 def _doc_stats(
     construct: str, per_doc: pd.DataFrame, total_docs: int, constructs: list[str]
 ) -> dict:
+    """Summarize how often a construct appears across documents.
+
+    Args:
+        construct: Construct name to summarize, or Overall for all constructs.
+        per_doc: Per document metric table with union counts.
+        total_docs: Total number of documents in the comparison.
+        constructs: All construct names present in the comparison.
+
+    Returns:
+        Dictionary with the number of documents containing the construct and
+        the fifth and ninety fifth percentiles of per document union counts.
+    """
     if construct == "Overall":
-        vals = per_doc["union"].tolist()
-        possible = total_docs * len(constructs)
+        union_counts = per_doc["union"].tolist()
+        possible_counts = total_docs * len(constructs)
         n_docs = per_doc["doc_id"].nunique()
     else:
-        rows = per_doc[per_doc["construct"] == construct]
-        vals = rows["union"].tolist()
-        possible = total_docs
-        n_docs = len(rows)
+        construct_rows = per_doc[per_doc["construct"] == construct]
+        union_counts = construct_rows["union"].tolist()
+        possible_counts = total_docs
+        n_docs = len(construct_rows)
 
-    vals = vals + [0] * max(0, possible - len(vals))
-    vals = vals or [0]
+    missing_count = max(0, possible_counts - len(union_counts))
+    union_counts = union_counts + [0] * missing_count
+    union_counts = union_counts or [0]
     return {
         "n_docs": n_docs,
-        "p5": round(float(np.percentile(vals, 5)), 2),
-        "p95": round(float(np.percentile(vals, 95)), 2),
+        "p5": round(float(np.percentile(union_counts, 5)), 2),
+        "p95": round(float(np.percentile(union_counts, 95)), 2),
     }
 
 
 def _weighted_median(values: list[float], weights: list[float]) -> float:
-    pairs = sorted(zip(values, weights), key=lambda item: item[0])
-    midpoint = sum(weights) / 2
-    total = 0.0
-    for value, weight in pairs:
-        total += weight
-        if total >= midpoint:
+    """Compute the median value after applying row weights.
+
+    Args:
+        values: Metric values to summarize.
+        weights: Weights for each value, usually the union count for that row.
+
+    Returns:
+        Weighted median of the input values.
+    """
+    value_weight_pairs = sorted(zip(values, weights), key=lambda item: item[0])
+    halfway_weight = sum(weights) / 2
+    cumulative_weight = 0.0
+
+    for value, weight in value_weight_pairs:
+        cumulative_weight += weight
+        if cumulative_weight >= halfway_weight:
             return value
-    return pairs[-1][0]
+
+    return value_weight_pairs[-1][0]
 
 
 def _weighted_summary(per_doc: pd.DataFrame) -> pd.DataFrame:
+    """Build weighted metric summaries across documents.
+
+    Args:
+        per_doc: Per document metric table from compute_summary_tables.
+
+    Returns:
+        DataFrame with one row per construct plus Overall. Each metric is
+        summarized with a weighted median, minimum, and maximum.
+    """
     rows = []
-    constructs = list(per_doc["construct"].unique()) if not per_doc.empty else []
-    for construct in [*constructs, "Overall"]:
-        group = (
+    construct_names = list(per_doc["construct"].unique()) if not per_doc.empty else []
+
+    for construct in [*construct_names, "Overall"]:
+        construct_rows = (
             per_doc
             if construct == "Overall"
             else per_doc[per_doc["construct"] == construct]
         )
         row = {
             "construct": construct,
-            "tp": int(group["tp"].sum()),
-            "fp": int(group["fp"].sum()),
-            "fn": int(group["fn"].sum()),
+            "tp": int(construct_rows["tp"].sum()),
+            "fp": int(construct_rows["fp"].sum()),
+            "fn": int(construct_rows["fn"].sum()),
         }
+
         for metric in [*METRICS, "pr_auc"]:
-            valid = group[["union", metric]].dropna()
-            valid = valid[valid["union"] > 0]
-            if valid.empty:
+            valid_rows = construct_rows[["union", metric]].dropna()
+            valid_rows = valid_rows[valid_rows["union"] > 0]
+
+            if valid_rows.empty:
                 row[f"{metric}_median"] = None
                 row[f"{metric}_min"] = None
                 row[f"{metric}_max"] = None
             else:
-                values = valid[metric].tolist()
-                weights = valid["union"].tolist()
+                values = valid_rows[metric].tolist()
+                weights = valid_rows["union"].tolist()
                 row[f"{metric}_median"] = round(_weighted_median(values, weights), 4)
                 row[f"{metric}_min"] = round(min(values), 4)
                 row[f"{metric}_max"] = round(max(values), 4)
+
         rows.append(row)
+
     return pd.DataFrame(rows)
 
 
 def compute_summary_tables(
     df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Compute per-document, pooled, and weighted comparison summaries."""
+    """Compute summary tables from row level comparison results.
+
+    Args:
+        df: Comparison DataFrame returned by compare_results.
+
+    Returns:
+        A tuple of three DataFrames:
+        per_doc: Metrics grouped by document and construct.
+        concatenated: Metrics pooled across documents by construct, plus overall.
+        weighted: Weighted median, minimum, and maximum metrics by construct,
+            plus overall.
+    """
     if df.empty:
         empty_counts = pd.DataFrame(columns=["doc_id", "construct", "tp", "fp", "fn"])
         return empty_counts, pd.DataFrame(), pd.DataFrame()
 
-    grouped = df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]]
-    per_counts = grouped.sum().reset_index()
+    per_doc_counts = (
+        df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
+    )
     per_doc = pd.concat(
         [
-            per_counts[["doc_id", "construct"]].reset_index(drop=True),
-            _metrics_for_counts(per_counts),
+            per_doc_counts[["doc_id", "construct"]].reset_index(drop=True),
+            _metrics_for_counts(per_doc_counts),
         ],
         axis=1,
     )
 
-    concat_counts = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
-    overall = pd.DataFrame(
+    pooled_counts = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
+    overall_counts = pd.DataFrame(
         [
             {
                 "construct": "Overall",
-                "tp": concat_counts["tp"].sum(),
-                "fp": concat_counts["fp"].sum(),
-                "fn": concat_counts["fn"].sum(),
+                "tp": pooled_counts["tp"].sum(),
+                "fp": pooled_counts["fp"].sum(),
+                "fn": pooled_counts["fn"].sum(),
             }
         ]
     )
-    concat_counts = pd.concat([concat_counts, overall], ignore_index=True)
+    pooled_counts = pd.concat([pooled_counts, overall_counts], ignore_index=True)
     concatenated = pd.concat(
         [
-            concat_counts[["construct"]].reset_index(drop=True),
-            _metrics_for_counts(concat_counts),
+            pooled_counts[["construct"]].reset_index(drop=True),
+            _metrics_for_counts(pooled_counts),
         ],
         axis=1,
     )
 
     total_docs = df["doc_id"].nunique()
-    constructs = df["construct"].unique().tolist()
-    stats = [
-        _doc_stats(row.construct, per_doc, total_docs, constructs)
+    construct_names = df["construct"].unique().tolist()
+    concatenated_stats = [
+        _doc_stats(row.construct, per_doc, total_docs, construct_names)
         for row in concatenated.itertuples()
     ]
-    concatenated = pd.concat([concatenated, pd.DataFrame(stats)], axis=1)
+    concatenated = pd.concat([concatenated, pd.DataFrame(concatenated_stats)], axis=1)
 
-    pr_auc = compute_pr_auc(df)
-    concatenated["pr_auc"] = concatenated["construct"].map(pr_auc)
-    per_doc["pr_auc"] = [
-        compute_pr_auc(
-            df[(df["doc_id"] == row.doc_id) & (df["construct"] == row.construct)]
-        ).get(row.construct)
-        for row in per_doc.itertuples()
-    ]
+    pr_auc_by_construct = compute_pr_auc(df)
+    concatenated["pr_auc"] = concatenated["construct"].map(pr_auc_by_construct)
+
+    per_doc_pr_auc = []
+    for row in per_doc.itertuples():
+        rows_for_doc_construct = df[
+            (df["doc_id"] == row.doc_id) & (df["construct"] == row.construct)
+        ]
+        scores = compute_pr_auc(rows_for_doc_construct)
+        per_doc_pr_auc.append(scores.get(row.construct))
+    per_doc["pr_auc"] = per_doc_pr_auc
 
     weighted = _weighted_summary(per_doc)
     weighted_stats = [
-        _doc_stats(row.construct, per_doc, total_docs, constructs)
+        _doc_stats(row.construct, per_doc, total_docs, construct_names)
         for row in weighted.itertuples()
     ]
     weighted = pd.concat([weighted, pd.DataFrame(weighted_stats)], axis=1)
@@ -646,31 +870,63 @@ def compute_summary_tables(
     return per_doc, concatenated, weighted
 
 
-def format_per_interview(per_interview: pd.DataFrame) -> pd.DataFrame:
-    """Return per-document metrics unchanged."""
-    return per_interview
-
-
 def _format_range(row: pd.Series, metric: str) -> str:
-    median = row.get(f"{metric}_median")
-    if median is None or pd.isna(median):
+    """Format one weighted summary metric for display.
+
+    Args:
+        row: Weighted summary row containing median, minimum, and maximum
+            columns for the metric.
+        metric: Base metric name, such as sensitivity, precision, f1, pabak,
+            or pr_auc.
+
+    Returns:
+        Display string with the median followed by the minimum and maximum
+        values. Returns a dash when the median is missing.
+    """
+    median_value = row.get(f"{metric}_median")
+    if median_value is None or pd.isna(median_value):
         return "-"
-    return f"{median:.2f} [{row[f'{metric}_min']:.2f}-{row[f'{metric}_max']:.2f}]"
+
+    min_value = row[f"{metric}_min"]
+    max_value = row[f"{metric}_max"]
+    return f"{median_value:.2f} [{min_value:.2f}-{max_value:.2f}]"
 
 
 def _format_doc_stats(row: pd.Series) -> str:
-    return f"{int(row['n_docs'])} [{row['p5']:.2f}-{row['p95']:.2f}]"
+    """Format document count and percentile spread for display.
+
+    Args:
+        row: Summary row containing n_docs, p5, and p95 values.
+
+    Returns:
+        Display string with document count followed by the 5th and 95th percentile values.
+    """
+    document_count = int(row["n_docs"])
+    p5 = row["p5"]
+    p95 = row["p95"]
+    return f"{document_count} [{p5:.2f}-{p95:.2f}]"
 
 
 def format_concatenated(concatenated: pd.DataFrame) -> pd.DataFrame:
-    """Format pooled construct metrics for notebook display."""
+    """Format pooled construct metrics for notebook display.
+
+    Args:
+        concatenated: Pooled construct metrics from compute_summary_tables.
+
+    Returns:
+        Display DataFrame with rounded metrics and formatted document stats.
+    """
     if concatenated.empty:
         return concatenated
-    display = concatenated[["construct", "tp", "fp", "fn"]].copy()
+
+    display_columns = ["construct", "tp", "fp", "fn"]
+    display = concatenated[display_columns].copy()
+
     for metric in [*METRICS, "pr_auc"]:
         display[metric] = concatenated[metric].apply(
             lambda value: "-" if pd.isna(value) else f"{value:.2f}"
         )
+
     display["interviews_with_construct [p5-p95]"] = concatenated.apply(
         _format_doc_stats, axis=1
     )
@@ -678,14 +934,25 @@ def format_concatenated(concatenated: pd.DataFrame) -> pd.DataFrame:
 
 
 def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
-    """Format weighted summary metrics for notebook display."""
+    """Format weighted summary metrics for notebook display.
+
+    Args:
+        weighted_summary: Weighted summary table from compute_summary_tables.
+
+    Returns:
+        Display DataFrame with metric ranges and formatted document stats.
+    """
     if weighted_summary.empty:
         return weighted_summary
-    display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
+
+    display_columns = ["construct", "tp", "fp", "fn"]
+    display = weighted_summary[display_columns].copy()
+
     for metric in [*METRICS, "pr_auc"]:
         display[metric] = weighted_summary.apply(
             lambda row, metric=metric: _format_range(row, metric), axis=1
         )
+
     display["interviews_with_construct [p5-p95]"] = weighted_summary.apply(
         _format_doc_stats, axis=1
     )
