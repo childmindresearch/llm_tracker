@@ -29,7 +29,8 @@ class LLMTrackerAnalyzer:
         api_key: Optional[str] = None,
         model_name: Optional[str] = None,
         custom_prompt: Optional[str] = None,
-        similarity_threshold: Optional[float] = None,
+        fuzzy_quote_matching: bool = False,
+        quote_match_threshold: float = 0.85,
         config: Optional[AnalyzerConfig] = None,
     ):
         if config is not None:
@@ -40,8 +41,8 @@ class LLMTrackerAnalyzer:
                 kwargs["model_name"] = model_name
             if custom_prompt is not None:
                 kwargs["custom_prompt"] = custom_prompt
-            if similarity_threshold is not None:
-                kwargs["similarity_threshold"] = similarity_threshold
+            kwargs["fuzzy_quote_matching"] = fuzzy_quote_matching
+            kwargs["quote_match_threshold"] = quote_match_threshold
             self.config = AnalyzerConfig(**kwargs)
 
     def analyze_document(
@@ -62,7 +63,7 @@ class LLMTrackerAnalyzer:
         input_dir: Path | str,
         codebook_path: Path | str,
         output_dir: Optional[str] = None,
-    ) -> tuple[dict[str, dict], dict[str, dict], list[ErrorRecord]]:
+    ) -> tuple[dict[str, AnalysisResult], dict[str, dict], list[ErrorRecord]]:
         """Analyze all documents in a directory.
 
         Returns:
@@ -77,7 +78,7 @@ class LLMTrackerAnalyzer:
             output_name=output_dir, base_dir=Path.cwd()
         )
 
-        results_dict: dict[str, dict] = {}
+        results_dict: dict[str, AnalysisResult] = {}
         metadata_dict: dict[str, dict] = {}
         errors: list[ErrorRecord] = []
 
@@ -95,7 +96,7 @@ class LLMTrackerAnalyzer:
                 save_analysis_result(result, output_path)
                 save_metadata(metadata, result.document_id, output_path)
 
-                results_dict[result.document_id] = result.to_dict()
+                results_dict[result.document_id] = result
                 metadata_dict[result.document_id] = metadata.model_dump()
 
                 success_count += 1
@@ -159,7 +160,7 @@ class LLMTrackerAnalyzer:
         subreddit_column: str = "subreddit",
         author_column: str = "author",
         output_dir: Optional[str] = None,
-    ) -> "tuple[dict[str, dict], dict[str, dict], list[ErrorRecord]]":
+    ) -> "tuple[dict[str, AnalysisResult], dict[str, dict], list[ErrorRecord]]":
         """Analyze all rows in a CSV file as individual documents.
 
         Each row is treated as a separate document. The document_id is
@@ -178,7 +179,8 @@ class LLMTrackerAnalyzer:
                 A timestamp is appended automatically.
 
         Returns:
-            Tuple of (results_dict, metadata_dict, errors_list).
+            Tuple of (results_dict, metadata_dict, errors_list). ``results_dict``
+            maps document IDs to AnalysisResult objects.
         """
         import pandas as pd
 
@@ -197,7 +199,7 @@ class LLMTrackerAnalyzer:
         if missing:
             raise ValueError(f"Missing columns in CSV: {missing}")
 
-        results_dict: dict[str, dict] = {}
+        results_dict: dict[str, AnalysisResult] = {}
         metadata_dict: dict[str, dict] = {}
         errors: list[ErrorRecord] = []
 
@@ -232,7 +234,7 @@ class LLMTrackerAnalyzer:
                 save_analysis_result(result, output_path)
                 save_metadata(metadata, result.document_id, output_path)
 
-                results_dict[result.document_id] = result.to_dict()
+                results_dict[result.document_id] = result
                 metadata_dict[result.document_id] = metadata.model_dump()
 
                 success_count += 1
@@ -290,7 +292,7 @@ class LLMTrackerAnalyzer:
 
     def retry_errors(
         self, output_dir: Path | str, codebook_path: Path | str
-    ) -> tuple[dict[str, dict], dict[str, dict], list[ErrorRecord]]:
+    ) -> tuple[dict[str, AnalysisResult], dict[str, dict], list[ErrorRecord]]:
         """Retry processing documents that previously failed.
 
         Args:
@@ -311,7 +313,7 @@ class LLMTrackerAnalyzer:
 
         print(f"Found {len(errors)} error(s) to retry.")
 
-        results_dict: dict[str, dict] = {}
+        results_dict: dict[str, AnalysisResult] = {}
         metadata_dict: dict[str, dict] = {}
         remaining_errors: list[ErrorRecord] = []
 
@@ -323,7 +325,7 @@ class LLMTrackerAnalyzer:
 
                 save_analysis_result(result, output_path)
                 save_metadata(metadata, result.document_id, output_path)
-                results_dict[result.document_id] = result.to_dict()
+                results_dict[result.document_id] = result
                 metadata_dict[result.document_id] = metadata.model_dump()
 
                 old_error_file = (
