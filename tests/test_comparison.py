@@ -1,114 +1,155 @@
-"""Tests for llm_tracker.comparison module."""
+"""Focused tests for the DataFrame-first comparison workflow."""
 
-import json
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pandas as pd
 
 from llm_tracker.comparison import (
+    COMPARISON_COLUMNS,
     LLMTrackerComparer,
-    QuoteMatchDecision,
+    _compute_span_overlap,
+    compute_pr_auc,
+    compute_summary_tables,
 )
+from llm_tracker.models import AnalysisResult, ConstructInstance
 
 
-def test_exact_match_prefilter() -> None:
-    """Exact quote matches should be detected without LLM calls."""
-    human = {
-        "document_id": "doc_1",
-        "instances": [
-            {"construct": "Self-Efficacy", "quote": "I can do it", "speaker_id": "P1"}
-        ],
-    }
-    llm = {
-        "document_id": "doc_1",
-        "instances": [
-            {"construct": "Self-Efficacy", "quote": "I can do it", "speaker_id": "P1"}
-        ],
-    }
+def test_compute_span_overlap_uses_interval_overlap() -> None:
+    assert _compute_span_overlap("0:10", "5:15") == 5 / 15
+    assert _compute_span_overlap("0:10", "10:20") == 0.0
+    assert _compute_span_overlap(None, "10:20") is None
 
-    def _match_fn(_construct: str, _h: dict, _l: dict) -> QuoteMatchDecision:
-        return QuoteMatchDecision(
-            match=False, reason="should not be called", method="stub"
+
+def test_compare_results_returns_rows_for_one_sided_constructs() -> None:
+    comparer = LLMTrackerComparer(config=SimpleNamespace(max_retries=0))
+    human_results = {
+        "doc_1": AnalysisResult(
+            document_id="doc_1",
+            instances=[
+                ConstructInstance(
+                    construct="stress",
+                    quote="I feel overwhelmed",
+                    quote_index="0:18",
+                    confidence=None,
+                )
+            ],
         )
+    }
+    llm_results = {"doc_1": AnalysisResult(document_id="doc_1")}
 
-    comparator = LLMTrackerComparer(
-        api_key="test", match_model="test", match_fn=_match_fn
-    )
-    result = comparator._compare_instances(human["instances"], llm["instances"])
+    df = comparer.compare_results(human_results, llm_results)
 
-    assert len(result) == 1
-    assert result[0]["construct"] == "Self-Efficacy"
-    assert len(result[0]["matched"]) == 1
-    assert result[0]["matched"][0]["match_method"] == "exact"
-    assert result[0]["human_only"] == []
-    assert result[0]["llm_only"] == []
+    assert list(df.columns) == COMPARISON_COLUMNS
+    assert df.to_dict("records") == [
+        {
+            "doc_id": "doc_1",
+            "construct": "stress",
+            "status": "human_only",
+            "human_quote": "I feel overwhelmed",
+            "llm_quote": None,
+            "human_indices": "0:18",
+            "llm_indices": None,
+            "human_confidence": None,
+            "llm_confidence": None,
+            "paraphrase": None,
+            "span_overlap": None,
+            "match_confidence": None,
+            "tp": 0,
+            "fp": 0,
+            "fn": 1,
+        }
+    ]
 
 
-def test_llm_matching_stub() -> None:
-    """Non-exact matches should go through matcher stub."""
-    human = {
-        "document_id": "doc_2",
-        "instances": [
-            {
-                "construct": "Growth Mindset",
-                "quote": "I can improve",
-                "speaker_id": "P1",
-            }
+def test_compare_documents_wraps_single_json_pair(tmp_path) -> None:
+    comparer = LLMTrackerComparer(config=SimpleNamespace(max_retries=0))
+    human = AnalysisResult(
+        document_id="human_doc_name",
+        instances=[
+            ConstructInstance(
+                construct="stress",
+                quote="I feel overwhelmed",
+                quote_index="0:18",
+            )
         ],
-    }
-    llm = {
-        "document_id": "doc_2",
-        "instances": [
+    )
+    llm = AnalysisResult(document_id="llm_doc_name")
+    human_path = tmp_path / "human.json"
+    llm_path = tmp_path / "llm.json"
+    human_path.write_text(human.model_dump_json(), encoding="utf-8")
+    llm_path.write_text(llm.model_dump_json(), encoding="utf-8")
+
+    df = comparer.compare_documents(human_path, llm_path)
+
+    assert df.loc[0, "doc_id"] == "human_doc_name"
+    assert df.loc[0, "status"] == "human_only"
+
+
+def test_pr_auc_uses_llm_coding_confidence_not_matcher_confidence() -> None:
+    df = pd.DataFrame(
+        [
             {
-                "construct": "Growth Mindset",
-                "quote": "I can get better",
-                "speaker_id": "P1",
-            }
-        ],
-    }
-
-    def _match_fn(_construct: str, _h: dict, _l: dict) -> QuoteMatchDecision:
-        return QuoteMatchDecision(match=True, reason="similar meaning", method="stub")
-
-    comparator = LLMTrackerComparer(
-        api_key="test", match_model="test", match_fn=_match_fn
+                "construct": "stress",
+                "status": "matched",
+                "llm_confidence": 0,
+                "match_confidence": 1.0,
+            },
+            {
+                "construct": "stress",
+                "status": "llm_only",
+                "llm_confidence": 2,
+                "match_confidence": None,
+            },
+        ]
     )
-    result = comparator._compare_instances(human["instances"], llm["instances"])
 
-    assert len(result) == 1
-    assert len(result[0]["matched"]) == 1
-    assert result[0]["matched"][0]["match_method"] == "stub"
-    assert result[0]["matched"][0]["match_reason"] == "similar meaning"
-    assert result[0]["human_only"] == []
-    assert result[0]["llm_only"] == []
+    # If matcher confidence were used, this would be 1.0 because the false
+    # positive has no matcher score. Using coding confidence correctly ranks
+    # the high-confidence false positive above the true positive.
+    assert compute_pr_auc(df)["stress"] == 0.5
 
 
-def test_directory_comparison(tmp_path) -> None:
-    """Directory comparison should handle union of document ids."""
-    human_dir = tmp_path / "human"
-    llm_dir = tmp_path / "llm"
-    human_dir.mkdir()
-    llm_dir.mkdir()
-
-    human_doc = {
-        "document_id": "doc_a",
-        "instances": [{"construct": "A", "quote": "human only", "speaker_id": "P1"}],
-    }
-    llm_doc = {
-        "document_id": "doc_b",
-        "instances": [{"construct": "B", "quote": "llm only", "speaker_id": "P2"}],
-    }
-
-    with open(human_dir / "doc_a.json", "w", encoding="utf-8") as f:
-        json.dump(human_doc, f)
-    with open(llm_dir / "doc_b.json", "w", encoding="utf-8") as f:
-        json.dump(llm_doc, f)
-
-    def _match_fn(_construct: str, _h: dict, _l: dict) -> QuoteMatchDecision:
-        return QuoteMatchDecision(match=False, reason="no match", method="stub")
-
-    comparator = LLMTrackerComparer(
-        api_key="test", match_model="test", match_fn=_match_fn
+def test_compute_summary_tables_counts_and_pr_auc() -> None:
+    comparison_df = pd.DataFrame(
+        [
+            {
+                "doc_id": "doc_1",
+                "construct": "stress",
+                "status": "matched",
+                "llm_confidence": 2,
+                "tp": 1,
+                "fp": 0,
+                "fn": 0,
+            },
+            {
+                "doc_id": "doc_1",
+                "construct": "stress",
+                "status": "llm_only",
+                "llm_confidence": 1,
+                "tp": 0,
+                "fp": 1,
+                "fn": 0,
+            },
+            {
+                "doc_id": "doc_2",
+                "construct": "stress",
+                "status": "human_only",
+                "llm_confidence": None,
+                "tp": 0,
+                "fp": 0,
+                "fn": 1,
+            },
+        ]
     )
-    results = comparator.compare_directories(human_dir, llm_dir)
 
-    assert set(results.keys()) == {"doc_a", "doc_b"}
-    assert results["doc_a"]["document_id"] == "doc_a"
-    assert results["doc_b"]["document_id"] == "doc_b"
+    per_doc, concatenated, weighted = compute_summary_tables(comparison_df)
+
+    overall = concatenated[concatenated["construct"] == "Overall"].iloc[0]
+    assert (overall["tp"], overall["fp"], overall["fn"]) == (1, 1, 1)
+    assert overall["precision"] == 0.5
+    assert overall["sensitivity"] == 0.5
+    assert overall["pr_auc"] == 1.0
+    assert set(per_doc["doc_id"]) == {"doc_1", "doc_2"}
+    assert "Overall" in set(weighted["construct"])
