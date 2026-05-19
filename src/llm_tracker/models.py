@@ -67,7 +67,10 @@ class ConstructInstance(BaseModel):
         default=None,
         ge=0,
         le=2,
-        description="Confidence score: 0=not mentioned/negated, 1=indirect, 2=clear. None for human codings.",
+        description=(
+            "Confidence score: 0=not mentioned/negated, 1=indirect, "
+            "2=clear. None for human codings."
+        ),
     )
 
 
@@ -85,16 +88,6 @@ class AnalysisResult(BaseModel):
     instances: list[ConstructInstance] = Field(
         default_factory=list, description="List of construct instances found"
     )
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization.
-
-        Returns
-        -------
-            Dictionary representation of the analysis result.
-
-        """
-        return self.model_dump()
 
 
 class APIMetadata(BaseModel):

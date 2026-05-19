@@ -4,21 +4,19 @@ from llm_tracker.analyzer import LLMTrackerAnalyzer
 from llm_tracker.comparison import (
     LLMTrackerComparer,
     compute_summary_tables,
-    format_comparison_table,
     format_concatenated,
-    format_per_interview,
     format_weighted_summary,
 )
 from llm_tracker.config import AnalyzerConfig
-from llm_tracker.corpus_summary import print_summary, summarize_corpus
 from llm_tracker.models import AnalysisResult, Codebook, ConstructInstance, ErrorRecord
+
+from llm_tracker.corpus_summary import print_summary, summarize_corpus
 
 __version__ = "0.1.0"
 __all__ = [
     "LLMTrackerAnalyzer",
     "AnalyzerConfig",
     "LLMTrackerComparer",
-    "format_comparison_table",
     "compute_summary_tables",
     "format_weighted_summary",
     "ConstructInstance",
@@ -26,7 +24,6 @@ __all__ = [
     "Codebook",
     "ErrorRecord",
     "format_concatenated",
-    "format_per_interview",
     "print_summary",
     "summarize_corpus",
 ]
