@@ -1,7 +1,7 @@
 """Configuration and constants for llm_tracker package."""
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -82,7 +82,7 @@ Important:
 Your response:"""
 
 
-DEFAULT_MODEL = "anthropic/claude-3.5-sonnet"
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_RETRIES = 0
 REQUEST_TIMEOUT = 120.0
@@ -102,6 +102,10 @@ class AnalyzerConfig:
         max_retries: Maximum number of retry attempts for failed requests.
         timeout: Request timeout in seconds.
         base_url: Base URL for the API endpoint.
+        fuzzy_quote_matching: Whether to use fuzzy matching when an extracted
+            quote is not found exactly in the source text. Defaults to False.
+        quote_match_threshold: Minimum fuzzy match score when fuzzy matching is
+            enabled.
 
     """
 
@@ -111,6 +115,8 @@ class AnalyzerConfig:
     max_retries: int = MAX_RETRIES
     timeout: float = REQUEST_TIMEOUT
     base_url: str = OPENROUTER_BASE_URL
+    fuzzy_quote_matching: bool = False
+    quote_match_threshold: float = 0.85
 
     def __post_init__(self) -> None:
         """Validate configuration and set defaults from environment."""
