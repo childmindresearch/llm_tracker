@@ -302,7 +302,7 @@ def save_analysis_result(result: AnalysisResult, output_dir: Path) -> Path:
     file_path = output_dir / "encodings" / f"{result.document_id}.json"
 
     with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(result.to_dict(), f, indent=2, ensure_ascii=False)
+        json.dump(result.model_dump(), f, indent=2, ensure_ascii=False)
 
     return file_path
 
@@ -533,7 +533,7 @@ def load_human_dataframe(
     construct_col: str = "Codes Applied Combined",
     range_format: str = "dash",
     construct_separator: str = ",",
-) -> list[AnalysisResult]:
+) -> dict[str, AnalysisResult]:
     """Convert a human-coded DataFrame into AnalysisResult objects.
 
     This is a pure reshape operation — it does NOT validate construct names
@@ -568,7 +568,7 @@ def load_human_dataframe(
 
     Returns:
     -------
-        List of AnalysisResult objects, one per unique document_id. Each
+        Dict mapping document_id to AnalysisResult. Each
         row with N constructs becomes N ConstructInstance entries. Rows
         missing any required field are skipped.
 
@@ -633,10 +633,10 @@ def load_human_dataframe(
                 )
             )
 
-    return [
-        AnalysisResult(document_id=doc_id, instances=instances)
+    return {
+        doc_id: AnalysisResult(document_id=doc_id, instances=instances)
         for doc_id, instances in results_by_doc.items()
-    ]
+    }
 
 
 _READERS: dict[str, str] = {
@@ -708,7 +708,7 @@ def _read_with_encoding_fallback(reader, path: Path, *, is_text: bool, **read_kw
 
 
 def save_human_results(
-    results: list[AnalysisResult],
+    results: dict[str, AnalysisResult],
     output_name: str,
     *,
     base_dir: Path | str | None = None,
@@ -723,7 +723,7 @@ def save_human_results(
 
     Args:
     ----
-        results: List of AnalysisResult objects, e.g. from ``load_human_coding``.
+        results: Dict mapping document IDs to AnalysisResult objects.
         output_name: Name prefix for the output directory. A timestamp is
             appended automatically (matching the analyzer's behaviour).
         base_dir: Directory to create the output folder in. Defaults to CWD.
@@ -736,16 +736,17 @@ def save_human_results(
     """
     output_path = create_output_directory(output_name=output_name, base_dir=base_dir)
 
-    for result in results:
+    for result in results.values():
         save_analysis_result(result, output_path)
 
     # Minimal README so the directory is self-describing.
     readme_path = output_path / "README.md"
-    n_instances = sum(len(r.instances) for r in results)
+    n_instances = sum(len(r.instances) for r in results.values())
+    source = source_file if source_file else "in-memory AnalysisResult objects"
     content = (
         f"# Human Codings\n\n"
         f"- **Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"- **Source**: {source_file if source_file else 'in-memory AnalysisResult objects'}\n"
+        f"- **Source**: {source}\n"
         f"- **Documents**: {len(results)}\n"
         f"- **Total instances**: {n_instances}\n\n"
         f"## Structure\n\n"
@@ -768,7 +769,7 @@ def load_human_coding(
     construct_separator: str = ",",
     save_dir: str | None = None,
     **read_kwargs,
-) -> list[AnalysisResult]:
+) -> dict[str, AnalysisResult]:
     """Load human-coded data from a CSV or xlsx file.
 
     Dispatches on the file extension (.csv, .tsv, .xlsx, .xls), reads the file
@@ -810,7 +811,7 @@ def load_human_coding(
 
     Returns:
     -------
-        List of AnalysisResult objects, one per unique document.
+        Dict mapping document IDs to AnalysisResult objects.
 
     Raises:
     ------
@@ -833,7 +834,7 @@ def load_human_coding(
     reader_name = _READERS.get(suffix)
     if reader_name is None:
         raise FileLoadError(
-            f"Unsupported file extension '{suffix}'. " f"Supported: {sorted(_READERS)}"
+            f"Unsupported file extension '{suffix}'. Supported: {sorted(_READERS)}"
         )
 
     if reader_name == "read_excel":
@@ -874,7 +875,7 @@ def load_human_coding(
 
 
 def validate_against_codebook(
-    results: "list[AnalysisResult] | AnalysisResult",
+    results: "dict[str, AnalysisResult] | AnalysisResult",
     codebook: "dict | Path | str",
     *,
     strict: bool = False,
@@ -886,8 +887,8 @@ def validate_against_codebook(
 
     Args:
     ----
-        results: A single AnalysisResult or a list of them (e.g. the output of
-            ``load_human_dataframe`` or ``load_dedoose_xlsx``).
+        results: A single AnalysisResult or a dict mapping document IDs to
+            AnalysisResult objects.
         codebook: Either an already-loaded codebook dict or a path to a
             codebook JSON file.
         strict: If True, raise FileLoadError when any unknown construct is
@@ -904,7 +905,9 @@ def validate_against_codebook(
             or if the codebook path cannot be loaded.
     """
     if isinstance(results, AnalysisResult):
-        results = [results]
+        result_items = [results]
+    else:
+        result_items = results.values()
 
     if isinstance(codebook, (str, Path)):
         codebook_data = load_codebook(codebook)
@@ -917,7 +920,7 @@ def validate_against_codebook(
     total_instances = 0
     total_unknown = 0
 
-    for result in results:
+    for result in result_items:
         for instance in result.instances:
             total_instances += 1
             name = instance.construct.strip()

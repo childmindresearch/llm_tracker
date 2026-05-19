@@ -1,17 +1,47 @@
-"""Comparison utilities for aligning human and LLM-coded results."""
+"""Compare human and LLM construct codings.
+
+The comparison pipeline is intentionally DataFrame-first:
+
+1. ``LLMTrackerComparer.compare_results`` aligns human and LLM quote instances.
+2. It returns one row per matched, human-only, or LLM-only instance.
+3. ``compute_summary_tables`` computes agreement metrics from those rows.
+"""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from llm_tracker.config import AnalyzerConfig
+from llm_tracker.models import AnalysisResult, ConstructInstance
 from llm_tracker.prompting import PromptingError, call_llm_api
 
+
+COMPARISON_COLUMNS = [
+    "doc_id",
+    "construct",
+    "status",
+    "human_quote",
+    "llm_quote",
+    "human_indices",
+    "llm_indices",
+    "human_confidence",
+    "llm_confidence",
+    "paraphrase",
+    "span_overlap",
+    "match_confidence",
+    "tp",
+    "fp",
+    "fn",
+]
+
+METRICS = ["sensitivity", "precision", "f1", "pabak"]
+# PR AUC is added separately because it ranks LLM predictions by coding confidence.
 
 MATCH_PROMPT_TEMPLATE = """You are reconciling two sets of quotes for the SAME \
 psychological construct, coded independently by a human and an LLM.
@@ -49,889 +79,180 @@ If there are no matches, return {{"matches": []}}
 class ComparisonError(Exception):
     """Exception raised when comparison fails."""
 
-    pass
 
+def _load_result_json(path: Path | str) -> AnalysisResult:
+    """Load one saved encoding JSON file as an AnalysisResult.
 
-def _strip_code_fences(text: str) -> str:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        first_newline = cleaned.find("\n")
-        if first_newline != -1:
-            cleaned = cleaned[first_newline + 1 :]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-    return cleaned.strip()
+    Args:
+        path: Path to a JSON file produced by the analyzer or by save_human_results()
 
+    Returns:
+        The parsed AnalysisResult.
 
-def _extract_first_json_object(text: str) -> str | None:
-    start = text.find("{")
-    if start == -1:
-        return None
-
-    depth = 0
-    in_string = False
-    escape = False
-
-    for idx in range(start, len(text)):
-        ch = text[idx]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-        else:
-            if ch == '"':
-                in_string = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : idx + 1]
-
-    return None
-
-
-def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float | None:
-    """Compute Jaccard overlap between two character-index spans ('start:end' format)."""
-    if not human_idx or not llm_idx:
-        return None
-    try:
-        h_start, h_end = map(int, human_idx.split(":"))
-        l_start, l_end = map(int, llm_idx.split(":"))
-    except (ValueError, AttributeError):
-        return None
-
-    human_chars = set(range(h_start, h_end))
-    llm_chars = set(range(l_start, l_end))
-
-    if not human_chars and not llm_chars:
-        return 1.0
-    if not human_chars or not llm_chars:
-        return 0.0
-
-    intersection = len(human_chars & llm_chars)
-    union = len(human_chars | llm_chars)
-    return intersection / union if union > 0 else 0.0
-
-
-def _format_quotes_for_prompt(quotes: list[dict]) -> str:
-    lines = []
-    for i, q in enumerate(quotes):
-        quote_text = q.get("quote", "")
-        indices = q.get("quote_index", "N/A")
-        lines.append(f'{i}. "{quote_text}" (indices: {indices})')
-    return "\n".join(lines)
-
-
-def _parse_construct_match_response(response_text: str) -> list[dict]:
-    if response_text is None:
-        raise ComparisonError("Empty response from LLM matcher.")
-
-    cleaned = _strip_code_fences(response_text)
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        extracted = _extract_first_json_object(cleaned) or _extract_first_json_object(
-            response_text
-        )
-        if not extracted:
-            raise ComparisonError("No valid JSON object found in matcher response.")
-        data = json.loads(extracted)
-
-    if not isinstance(data, dict) or "matches" not in data:
-        raise ComparisonError("Matcher response must include a 'matches' field.")
-
-    matches = data["matches"]
-    if not isinstance(matches, list):
-        raise ComparisonError("'matches' must be a list.")
-
-    result = []
-    for m in matches:
-        if not isinstance(m, dict):
-            continue
-        if "human_index" not in m or "llm_index" not in m:
-            continue
-        try:
-            human_index = int(m["human_index"])
-            llm_index = int(m["llm_index"])
-        except (ValueError, TypeError):
-            continue
-
-        paraphrase = bool(m.get("paraphrase", False))
-        try:
-            confidence = float(m.get("match_confidence", 0.5))
-        except (ValueError, TypeError):
-            confidence = 0.5
-        confidence = max(0.0, min(1.0, confidence))
-
-        result.append(
-            {
-                "human_index": human_index,
-                "llm_index": llm_index,
-                "paraphrase": paraphrase,
-                "match_confidence": confidence,
-            }
-        )
-
-    return result
-
-
-def _load_result_json(path: Path | str) -> dict:
+    Raises:
+        ComparisonError: If the file does not exist or is not valid JSON.
+    """
     file_path = Path(path)
     if not file_path.exists():
         raise ComparisonError(f"Result JSON not found: {file_path}")
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return AnalysisResult(**json.loads(file_path.read_text(encoding="utf-8")))
     except json.JSONDecodeError as e:
         raise ComparisonError(f"Invalid JSON in {file_path}: {e}") from e
 
 
-def _group_by_construct(instances: list[dict]) -> dict[str, list[dict]]:
-    grouped: dict[str, list[dict]] = {}
-    for instance in instances:
-        construct = str(instance.get("construct", "Unknown"))
-        grouped.setdefault(construct, []).append(instance)
+def _result_json_dir(path: Path | str) -> Path:
+    """Resolve the folder containing saved encoding JSON files.
+
+    Args:
+        path: Either an analyzer run directory or its `encodings` subdir.
+
+    Returns:
+        Directory containing per-document result JSON files.
+
+    Raises:
+        ComparisonError: If the path is not a directory or contains no result
+            JSON files.
+    """
+    directory = Path(path)
+    if not directory.is_dir():
+        raise ComparisonError(f"Result directory not found: {directory}")
+    if any(directory.glob("*.json")):
+        return directory
+    encodings = directory / "encodings"
+    if encodings.is_dir():
+        return encodings
+    raise ComparisonError(f"No JSON result files found in {directory}")
+
+
+def _result_files(path: Path | str) -> dict[str, Path]:
+    """Map document IDs to saved encoding JSON files.
+
+    Args:
+        path: Either an analyzer run directory or its `encodings` subdirectory.
+
+    Returns:
+        A dictionary mapping each document ID to its result JSON path.
+
+    Raises:
+        ComparisonError: If the path cannot be resolved to a directory
+            containing result JSON files.
+    """
+    return {p.stem: p for p in _result_json_dir(path).glob("*.json")}
+
+
+def _save_comparison_table(df: pd.DataFrame, output_dir: str) -> Path:
+    """Save the row-level comparison table to a timestamped CSV folder.
+
+    Args:
+        df: Comparison DataFrame returned by compare_results().
+        output_dir: Prefix for the timestamped output directory.
+
+    Returns:
+        Path to the created output directory.
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    out_dir = Path.cwd() / f"{output_dir}_{timestamp}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_dir / "comparison_rows.csv", index=False)
+    return out_dir
+
+
+def _group_by_construct(
+    instances: list[ConstructInstance],
+) -> dict[str, list[ConstructInstance]]:
+    grouped: dict[str, list[ConstructInstance]] = {}
+    for item in instances:
+        grouped.setdefault(item.construct, []).append(item)
     return grouped
 
 
-def _create_comparison_output_directory(
-    output_name: str | None = None,
-    base_dir: Path | str | None = None,
-) -> Path:
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    dir_name = (
-        f"{output_name}_{timestamp}" if output_name else f"comparison_{timestamp}"
+def _format_quotes(quotes: list[ConstructInstance]) -> str:
+    return "\n".join(
+        f'{i}. "{item.quote}" '
+        f"(indices: {item.quote_index if item.quote_index else 'N/A'})"
+        for i, item in enumerate(quotes)
     )
-    output_dir = Path(base_dir) / dir_name if base_dir else Path.cwd() / dir_name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "comparisons").mkdir(exist_ok=True)
-    return output_dir
 
 
-def _truncate(text: str, max_len: int) -> str:
-    if max_len <= 0:
-        return ""
-    if len(text) <= max_len:
-        return text
-    if max_len <= 3:
-        return text[:max_len]
-    return f"{text[: max_len - 3]}..."
+def _parse_match_response(response_text: str) -> list[dict]:
+    try:
+        data = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        raise ComparisonError(f"Invalid matcher JSON: {e}") from e
 
+    matches = data.get("matches")
+    if not isinstance(matches, list):
+        raise ComparisonError("Matcher response must contain a 'matches' list.")
 
-def _format_single_comparison(
-    result: dict,
-    *,
-    max_quote_length: int | None = None,
-) -> "pd.DataFrame":
-    """Build a row-level DataFrame from a single compare_documents() result.
-
-    Private helper called by format_comparison_table. Not intended for direct use.
-    """
-    rows: list[dict] = []
-    comparisons = result.get("comparisons", [])
-    document_id = str(result.get("document_id", "unknown_document"))
-
-    for block in comparisons:
-        construct = str(block.get("construct", "Unknown"))
-
-        for match in block.get("matched", []):
-            human_quote = str(match.get("human_quote", ""))
-            llm_quote = str(match.get("llm_quote", ""))
-            if max_quote_length is not None:
-                human_quote = _truncate(human_quote, max_quote_length)
-                llm_quote = _truncate(llm_quote, max_quote_length)
-            rows.append(
+    parsed = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        try:
+            confidence = float(match.get("match_confidence", 0.5))
+            parsed.append(
                 {
-                    "doc_id": document_id,
-                    "construct": construct,
-                    "status": "matched",
-                    "human_quote": human_quote,
-                    "llm_quote": llm_quote,
-                    "human_indices": match.get("human_indices"),
-                    "llm_indices": match.get("llm_indices"),
-                    "paraphrase": match.get("paraphrase"),
-                    "span_overlap": match.get("span_overlap"),
-                    "match_confidence": match.get("match_confidence"),
-                    "tp": 1,
-                    "fp": 0,
-                    "fn": 0,
+                    "human_index": int(match["human_index"]),
+                    "llm_index": int(match["llm_index"]),
+                    "paraphrase": bool(match.get("paraphrase", False)),
+                    "match_confidence": max(0.0, min(1.0, confidence)),
                 }
             )
-
-        for item in block.get("human_only", []):
-            quote = str(item.get("quote", ""))
-            if max_quote_length is not None:
-                quote = _truncate(quote, max_quote_length)
-            rows.append(
-                {
-                    "doc_id": document_id,
-                    "construct": construct,
-                    "status": "human_only",
-                    "human_quote": quote,
-                    "llm_quote": None,
-                    "human_indices": item.get("indices"),
-                    "llm_indices": None,
-                    "paraphrase": None,
-                    "span_overlap": None,
-                    "match_confidence": None,
-                    "tp": 0,
-                    "fp": 0,
-                    "fn": 1,
-                }
-            )
-
-        for item in block.get("llm_only", []):
-            quote = str(item.get("quote", ""))
-            if max_quote_length is not None:
-                quote = _truncate(quote, max_quote_length)
-            rows.append(
-                {
-                    "doc_id": document_id,
-                    "construct": construct,
-                    "status": "llm_only",
-                    "human_quote": None,
-                    "llm_quote": quote,
-                    "human_indices": None,
-                    "llm_indices": item.get("indices"),
-                    "paraphrase": None,
-                    "span_overlap": None,
-                    "match_confidence": None,
-                    "tp": 0,
-                    "fp": 1,
-                    "fn": 0,
-                }
-            )
-
-    columns = [
-        "doc_id",
-        "construct",
-        "status",
-        "human_quote",
-        "llm_quote",
-        "human_indices",
-        "llm_indices",
-        "paraphrase",
-        "span_overlap",
-        "match_confidence",
-        "tp",
-        "fp",
-        "fn",
-    ]
-
-    return pd.DataFrame(rows, columns=columns)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return parsed
 
 
-def format_comparison_table(
-    comparison_results: dict,
-    *,
-    max_quote_length: int | None = None,
-) -> "pd.DataFrame":
-    """Build a combined row-level DataFrame from all compare_directories() results.
-
-    Args:
-        comparison_results: Output of compare_directories() — a dict mapping
-            document IDs to single-document comparison results.
-        max_quote_length: Optional quote truncation for display convenience.
-
-    Returns:
-        pandas DataFrame with one row per matched/human_only/llm_only instance
-        across all interviews. Prints a description and column definitions.
-    """
-    df = pd.concat(
-        [
-            _format_single_comparison(result, max_quote_length=max_quote_length)
-            for result in comparison_results.values()
-        ],
-        ignore_index=True,
-    )
-    print(
-        "Comparison Table\n"
-        "----------------\n"
-        "One row per coded instance across all interviews. Each row represents a quote\n"
-        "identified by at least one coder, with its classification and match details.\n"
-        "\n"
-        "Columns:\n"
-        "  doc_id           : interview identifier\n"
-        "  construct        : psychological construct the instance belongs to\n"
-        "  status           : matched (TP), human_only (FN), or llm_only (FP)\n"
-        "  human_quote      : quote extracted by the human coder\n"
-        "  llm_quote        : quote extracted by the LLM\n"
-        "  human_indices    : character-level start:end indices of the human quote in the source text\n"
-        "  llm_indices      : character-level start:end indices of the LLM quote in the source text\n"
-        "  paraphrase       : True if the matched quotes differ meaningfully in wording\n"
-        "  span_overlap     : Jaccard overlap between human and LLM character spans (matched rows only)\n"
-        "  match_confidence : LLM matcher confidence that the two quotes refer to the same passage\n"
-        "  tp/fp/fn         : binary indicators for this row's contribution to counts\n"
-    )
-    return df
+def _parse_span(span: str | None) -> tuple[int, int] | None:
+    if not span:
+        return None
+    try:
+        start, end = map(int, span.split(":"))
+    except (AttributeError, ValueError):
+        return None
+    return (start, end) if end >= start else None
 
 
-def _safe_divide(numerator: float, denominator: float) -> float | None:
-    return numerator / denominator if denominator > 0 else None
+def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float | None:
+    """Compute Jaccard overlap between two ``start:end`` character spans."""
+    human_span = _parse_span(human_idx)
+    llm_span = _parse_span(llm_idx)
+    if human_span is None or llm_span is None:
+        return None
+
+    h_start, h_end = human_span
+    l_start, l_end = llm_span
+    h_len = h_end - h_start
+    l_len = l_end - l_start
+    if h_len == 0 and l_len == 0:
+        return 1.0
+    if h_len == 0 or l_len == 0:
+        return 0.0
+
+    overlap = max(0, min(h_end, l_end) - max(h_start, l_start))
+    union = h_len + l_len - overlap
+    return overlap / union if union else 0.0
 
 
-def _weighted_median(values: list[float], weights: list[float]) -> float:
-    """Return the weighted median of values, weighted by weights."""
-    pairs = sorted(zip(values, weights), key=lambda x: x[0])
-    total = sum(w for _, w in pairs)
-    cumulative = 0.0
-    for val, w in pairs:
-        cumulative += w
-        if cumulative >= total / 2:
-            return val
-    return pairs[-1][0]
-
-
-def _agreement_metrics_binary(rater_a: list[int], rater_b: list[int]) -> dict:
-    """Compute Cohen's Kappa and PABAK between two binary raters.
-
-    Args:
-        rater_a: Binary ratings from rater A (0 or 1), one entry per item.
-        rater_b: Binary ratings from rater B (0 or 1), same items, same order.
-
-    Returns:
-        Dict with cohens_kappa, prevalence_adjusted_kappa, observed_agreement,
-        expected_agreement, and raw counts.
-
-    Notes:
-        TN = 0 by convention. This function is called with only the observed
-        coded items (tp + fp + fn). Open-ended span coding tasks have no
-        observable true negatives, so kappa will skew lower than tasks with
-        a fixed item inventory. Do not compare these kappa values directly
-        to benchmarks from fixed-item rating tasks.
-    """
-    if len(rater_a) != len(rater_b):
-        raise ValueError("Rater arrays must have the same length")
-
-    n_items = len(rater_a)
-    if n_items == 0:
-        return {
-            "cohens_kappa": None,
-            "prevalence_adjusted_kappa": None,
-            "observed_agreement": None,
-            "expected_agreement": None,
-        }
-
-    both_positive = 0
-    both_negative = 0
-    a_positive_b_negative = 0
-    a_negative_b_positive = 0
-
-    for a, b in zip(rater_a, rater_b):
-        if a == 1 and b == 1:
-            both_positive += 1
-        elif a == 0 and b == 0:
-            both_negative += 1
-        elif a == 1 and b == 0:
-            a_positive_b_negative += 1
-        elif a == 0 and b == 1:
-            a_negative_b_positive += 1
-
-    observed_agreement = (both_positive + both_negative) / n_items
-
-    prob_a_positive = (both_positive + a_positive_b_negative) / n_items
-    prob_b_positive = (both_positive + a_negative_b_positive) / n_items
-    prob_a_negative = (both_negative + a_negative_b_positive) / n_items
-    prob_b_negative = (both_negative + a_positive_b_negative) / n_items
-
-    expected_agreement = (
-        prob_a_positive * prob_b_positive + prob_a_negative * prob_b_negative
-    )
-
-    if expected_agreement == 1:
-        cohens_kappa = 1.0
-    else:
-        cohens_kappa = (observed_agreement - expected_agreement) / (
-            1 - expected_agreement
-        )
-
-    prevalence_adjusted_kappa = 2 * observed_agreement - 1
-
+def _base_row(doc_id: str, construct: str, status: str) -> dict:
     return {
-        "cohens_kappa": round(cohens_kappa, 4),
-        "prevalence_adjusted_kappa": round(prevalence_adjusted_kappa, 4),
-        "observed_agreement": round(observed_agreement, 4),
-        "expected_agreement": round(expected_agreement, 4),
+        "doc_id": doc_id,
+        "construct": construct,
+        "status": status,
+        "human_quote": None,
+        "llm_quote": None,
+        "human_indices": None,
+        "llm_indices": None,
+        "human_confidence": None,
+        "llm_confidence": None,
+        "paraphrase": None,
+        "span_overlap": None,
+        "match_confidence": None,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
     }
-
-
-def _metrics_from_counts(tp: float, fp: float, fn: float) -> dict:
-    tp, fp, fn = int(tp), int(fp), int(fn)
-    union = tp + fp + fn
-
-    rater_a = [1] * tp + [1] * fn + [0] * fp
-    rater_b = [1] * tp + [0] * fn + [1] * fp
-    kappa_results = _agreement_metrics_binary(rater_a, rater_b)
-
-    return {
-        "tp": tp,
-        "fp": fp,
-        "fn": fn,
-        "union": union,
-        "sensitivity": _safe_divide(tp, tp + fn),
-        "precision": _safe_divide(tp, tp + fp),
-        "f1": _safe_divide(2 * tp, 2 * tp + fp + fn),
-        "cohens_kappa": kappa_results["cohens_kappa"],
-        "pabak": kappa_results["prevalence_adjusted_kappa"],
-    }
-
-
-def compute_pr_auc(df: "pd.DataFrame") -> dict[str, float | None]:
-    """Compute PR AUC per construct and Overall from a comparison dataframe.
-
-    LLM predictions are ranked by match_confidence. Matched rows are positive
-    (label=1), llm_only rows are negative (label=0, score=0). human_only rows
-    are excluded as they are not LLM predictions.
-
-    Args:
-        df: Concatenated output of format_comparison_table() across all documents.
-            Must contain columns: construct, status, match_confidence.
-
-    Returns:
-        Dict mapping construct name (and 'Overall') to PR AUC float, or None
-        if there are fewer than 2 unique labels for a construct.
-
-    Notes:
-        PR AUC is computed by pooling all LLM predictions across documents per
-        construct. Per-document PR AUC is not computed as counts are too low
-        to form a meaningful curve. score=0 is assigned to all llm_only rows
-        (Option A convention - conservative, no schema changes required).
-    """
-    llm_preds = df[df["status"].isin(["matched", "llm_only"])].copy()
-    llm_preds["_label"] = (llm_preds["status"] == "matched").astype(int)
-    llm_preds["_score"] = llm_preds["match_confidence"].fillna(0.0)
-
-    results: dict[str, float | None] = {}
-
-    all_constructs = llm_preds["construct"].unique().tolist()
-    groups = [("Overall", llm_preds)] + [
-        (c, llm_preds[llm_preds["construct"] == c]) for c in all_constructs
-    ]
-
-    for name, group in groups:
-        labels = group["_label"].tolist()
-        scores = group["_score"].tolist()
-        if len(set(labels)) < 2:
-            results[name] = None
-        else:
-            results[name] = round(float(average_precision_score(labels, scores)), 4)
-
-    return results
-
-
-def compute_summary_tables(
-    df: "pd.DataFrame",
-    include_cohens_kappa: bool = False,
-) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
-    """Compute per-interview, concatenated, and weighted summary tables.
-
-    Args:
-        df: Concatenated output of format_comparison_table() across all documents.
-            Must contain columns: doc_id, construct, tp, fp, fn.
-        include_cohens_kappa: If True, include the cohens_kappa column in all three
-            output DataFrames. Defaults to False because Cohen's Kappa requires a
-            true-negative count, which is not observable in open-ended span coding;
-            PABAK is reported instead.
-
-    Returns:
-        Tuple of (per_interview, concatenated, weighted_summary) DataFrames.
-
-        per_interview: one row per (doc_id, construct) with raw counts and metrics.
-        concatenated: one row per construct (counts pooled across all docs) + Overall row.
-            Includes n_docs (docs where construct appeared) and p5/p95 of instance counts.
-        weighted_summary: one row per construct + Overall row, with weighted median
-            and [min, max] of each metric across documents. Weight = union per document.
-            Includes n_docs and p5/p95 of instance counts.
-    """
-    METRICS = ["sensitivity", "precision", "f1"]
-    if include_cohens_kappa:
-        METRICS.append("cohens_kappa")
-    METRICS.append("pabak")
-
-    total_docs = df["doc_id"].nunique()
-    all_constructs = df["construct"].unique().tolist()
-
-    # --- Per interview ---
-    grouped = (
-        df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
-    )
-    metric_rows = [_metrics_from_counts(r.tp, r.fp, r.fn) for r in grouped.itertuples()]
-    metric_df = pd.DataFrame(metric_rows)
-    if not include_cohens_kappa:
-        metric_df = metric_df.drop(columns="cohens_kappa", errors="ignore")
-    per_interview = pd.concat(
-        [grouped[["doc_id", "construct"]].reset_index(drop=True), metric_df], axis=1
-    )
-    for metric in METRICS:
-        per_interview[metric] = per_interview[metric].round(2)
-
-    # --- Helper: n_docs and percentiles for a construct ---
-    def _doc_stats(construct: str) -> dict:
-        if construct == "Overall":
-            union_vals = per_interview["union"].tolist()
-            n_possible = total_docs * len(all_constructs)
-            all_vals = union_vals + [0] * (n_possible - len(union_vals))
-            n_docs = per_interview["doc_id"].nunique()
-        else:
-            rows = per_interview[per_interview["construct"] == construct]
-            union_vals = rows["union"].tolist()
-            all_vals = union_vals + [0] * (total_docs - len(union_vals))
-            n_docs = len(rows)
-        return {
-            "n_docs": n_docs,
-            "p5": round(float(np.percentile(all_vals, 5)), 2),
-            "p95": round(float(np.percentile(all_vals, 95)), 2),
-        }
-
-    # --- Concatenated ---
-    construct_totals = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
-    overall_row = pd.DataFrame(
-        [
-            {
-                "construct": "Overall",
-                "tp": construct_totals["tp"].sum(),
-                "fp": construct_totals["fp"].sum(),
-                "fn": construct_totals["fn"].sum(),
-            }
-        ]
-    )
-    concat_input = pd.concat([construct_totals, overall_row], ignore_index=True)
-    concat_metrics = [
-        _metrics_from_counts(r.tp, r.fp, r.fn) for r in concat_input.itertuples()
-    ]
-    concat_metrics_df = pd.DataFrame(concat_metrics)
-    if not include_cohens_kappa:
-        concat_metrics_df = concat_metrics_df.drop(
-            columns="cohens_kappa", errors="ignore"
-        )
-    concatenated = pd.concat(
-        [
-            concat_input[["construct"]].reset_index(drop=True),
-            concat_metrics_df,
-        ],
-        axis=1,
-    )
-    for metric in METRICS:
-        concatenated[metric] = concatenated[metric].round(2)
-    doc_stats = pd.DataFrame([_doc_stats(c) for c in concatenated["construct"]])
-    concatenated = pd.concat([concatenated, doc_stats], axis=1)
-
-    # --- Weighted summary (median [min, max]) ---
-    weighted_rows = []
-    constructs_with_overall = list(per_interview["construct"].unique()) + ["Overall"]
-
-    for construct in constructs_with_overall:
-        group = (
-            per_interview
-            if construct == "Overall"
-            else per_interview[per_interview["construct"] == construct]
-        )
-
-        row: dict = {
-            "construct": construct,
-            "tp": int(group["tp"].sum()),
-            "fp": int(group["fp"].sum()),
-            "fn": int(group["fn"].sum()),
-        }
-        for metric in METRICS:
-            valid = group[["union", metric]].dropna(subset=[metric])
-            valid = valid[valid["union"] > 0]
-            if valid.empty:
-                row[f"{metric}_median"] = None
-                row[f"{metric}_min"] = None
-                row[f"{metric}_max"] = None
-            else:
-                vals = valid[metric].tolist()
-                weights = valid["union"].tolist()
-                row[f"{metric}_median"] = round(_weighted_median(vals, weights), 2)
-                row[f"{metric}_min"] = round(min(vals), 2)
-                row[f"{metric}_max"] = round(max(vals), 2)
-
-        stats = _doc_stats(construct)
-        row["n_docs"] = stats["n_docs"]
-        row["p5"] = stats["p5"]
-        row["p95"] = stats["p95"]
-        weighted_rows.append(row)
-
-    weighted_summary = pd.DataFrame(weighted_rows)
-
-    # --- PR AUC ---
-    pr_auc = compute_pr_auc(df)
-    concatenated["pr_auc"] = concatenated["construct"].map(pr_auc)
-    # PR AUC per (doc_id, construct)
-    per_interview_pr_auc = []
-    for _, row in per_interview[["doc_id", "construct"]].iterrows():
-        doc_subset = df[
-            (df["doc_id"] == row["doc_id"]) & (df["construct"] == row["construct"])
-        ]
-        result = compute_pr_auc(doc_subset)
-        per_interview_pr_auc.append(result.get(row["construct"]))
-    per_interview["pr_auc"] = per_interview_pr_auc
-
-    # Aggregate pr_auc into weighted_summary: median [min, max] across per-doc values
-    for construct in constructs_with_overall:
-        group = (
-            per_interview
-            if construct == "Overall"
-            else per_interview[per_interview["construct"] == construct]
-        )
-        valid = group["pr_auc"].dropna().tolist()
-        idx = weighted_summary.index[weighted_summary["construct"] == construct][0]
-        if len(valid) < 1:
-            weighted_summary.at[idx, "pr_auc_median"] = None
-            weighted_summary.at[idx, "pr_auc_min"] = None
-            weighted_summary.at[idx, "pr_auc_max"] = None
-        else:
-            weights = group.loc[group["pr_auc"].notna(), "union"].tolist()
-            weighted_summary.at[idx, "pr_auc_median"] = (
-                round(_weighted_median(valid, weights), 4)
-                if weights
-                else round(float(sum(valid) / len(valid)), 4)
-            )
-            weighted_summary.at[idx, "pr_auc_min"] = round(min(valid), 4)
-            weighted_summary.at[idx, "pr_auc_max"] = round(max(valid), 4)
-
-    return per_interview, concatenated, weighted_summary
-
-
-def format_per_interview(per_interview: "pd.DataFrame") -> "pd.DataFrame":
-    """Format per_interview for display, printing a description and column definitions.
-
-    Args:
-        per_interview: Output of compute_summary_tables()[0].
-
-    Returns:
-        The per_interview DataFrame unchanged (formatting is handled by pandas display).
-    """
-    kappa_line = (
-        "  cohens_kappa : agreement beyond chance (TN=0 convention)\n"
-        if "cohens_kappa" in per_interview.columns
-        else ""
-    )
-    print(
-        "Per-Interview Metrics\n"
-        "---------------------\n"
-        "One row per (interview, construct) combination. Constructs that did not appear\n"
-        "in a given interview are absent — they do not appear as zero rows.\n"
-        "\n"
-        "Columns:\n"
-        "  doc_id       : interview identifier\n"
-        "  construct    : psychological construct\n"
-        "  tp/fp/fn     : true positives, false positives, false negatives for this interview-construct\n"
-        "  union        : total coded instances (TP + FP + FN)\n"
-        "  sensitivity  : TP / (TP + FN)\n"
-        "  precision    : TP / (TP + FP)\n"
-        "  f1           : harmonic mean of sensitivity and precision\n"
-        f"{kappa_line}"
-        "  pabak        : prevalence-adjusted kappa\n"
-        "  pr_auc       : area under precision-recall curve; NaN where insufficient label classes\n"
-    )
-    return per_interview
-
-
-def format_weighted_summary(weighted_summary: "pd.DataFrame") -> "pd.DataFrame":
-    """Format weighted_summary into display strings: 'median [min–max]'.
-
-    Args:
-        weighted_summary: Output of compute_summary_tables()[2].
-
-    Returns:
-        DataFrame with one display column per metric and interviews_with_construct [p5–p95] column.
-    """
-    has_kappa = "cohens_kappa_median" in weighted_summary.columns
-    kappa_line = (
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
-        if has_kappa
-        else ""
-    )
-    print(
-        "Weighted Summary\n"
-        "----------------\n"
-        "One row per construct. Metrics are computed per interview first, then summarized\n"
-        "as weighted median [min\u2013max] across interviews, weighted by union size (TP+FP+FN).\n"
-        "\n"
-        "Columns:\n"
-        "  tp/fp/fn                          : total true positives, false positives, false negatives across all interviews\n"
-        "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
-        "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
-        "  f1                                : harmonic mean of sensitivity and precision\n"
-        f"{kappa_line}"
-        "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
-        "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
-        "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
-    )
-    METRICS = ["sensitivity", "precision", "f1"]
-    if has_kappa:
-        METRICS.append("cohens_kappa")
-    METRICS.append("pabak")
-    display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
-
-    for metric in METRICS:
-        med_col = f"{metric}_median"
-        min_col = f"{metric}_min"
-        max_col = f"{metric}_max"
-
-        def fmt_row(r, m=med_col, mn=min_col, mx=max_col):
-            if pd.isna(r[m]):
-                return "—"
-            return f"{r[m]:.2f} [{r[mn]:.2f}–{r[mx]:.2f}]"
-
-        display[metric] = weighted_summary.apply(fmt_row, axis=1)
-
-    def fmt_n_docs(r):
-        if pd.isna(r["p5"]):
-            return str(int(r["n_docs"]))
-        return f"{int(r['n_docs'])} [{r['p5']:.2f}–{r['p95']:.2f}]"
-
-    def fmt_pr_auc(r):
-        if r["pr_auc_median"] is None or (
-            isinstance(r["pr_auc_median"], float) and pd.isna(r["pr_auc_median"])
-        ):
-            return "—"
-        return f"{r['pr_auc_median']:.2f} [{r['pr_auc_min']:.2f}–{r['pr_auc_max']:.2f}]"
-
-    display["pr_auc"] = weighted_summary.apply(fmt_pr_auc, axis=1)
-
-    display["interviews_with_construct [p5–p95]"] = weighted_summary.apply(
-        fmt_n_docs, axis=1
-    )
-
-    return display
-
-
-def format_concatenated(concatenated: "pd.DataFrame") -> "pd.DataFrame":
-    """Format concatenated into display strings, with interviews_with_construct [p5-p95] bracket column.
-
-    Args:
-        concatenated: Output of compute_summary_tables()[1].
-
-    Returns:
-        DataFrame with metric columns rounded to 2dp and interviews_with_construct [p5-p95] column.
-        Separate p5 and p95 columns are dropped.
-    """
-    has_kappa = "cohens_kappa" in concatenated.columns
-    kappa_line = (
-        "  cohens_kappa                      : agreement beyond chance; computed over coded instances only (TN=0 convention)\n"
-        if has_kappa
-        else ""
-    )
-    print(
-        "Concatenated Metrics\n"
-        "--------------------\n"
-        "One row per construct. TP/FP/FN counts are pooled across all interviews before\n"
-        "metrics are computed — treats the entire dataset as a single document.\n"
-        "\n"
-        "Columns:\n"
-        "  tp/fp/fn                          : total counts pooled across all interviews\n"
-        "  sensitivity                       : TP / (TP + FN) — proportion of human-coded instances the LLM found\n"
-        "  precision                         : TP / (TP + FP) — proportion of LLM-coded instances that were correct\n"
-        "  f1                                : harmonic mean of sensitivity and precision\n"
-        f"{kappa_line}"
-        "  pabak                             : prevalence-adjusted kappa; more stable when construct prevalence is low\n"
-        "  pr_auc                            : area under precision-recall curve; ranks LLM predictions by match confidence\n"
-        "  interviews_with_construct [p5-p95]: number of interviews containing the construct, with 5th-95th percentile of instance counts\n"
-    )
-    METRICS = ["sensitivity", "precision", "f1"]
-    if has_kappa:
-        METRICS.append("cohens_kappa")
-    METRICS.append("pabak")
-    display = concatenated[["construct", "tp", "fp", "fn"]].copy()
-
-    for metric in METRICS:
-        display[metric] = concatenated[metric].apply(
-            lambda v: "—" if pd.isna(v) else f"{v:.2f}"
-        )
-
-    def fmt_n_docs(r):
-        if pd.isna(r["p5"]):
-            return str(int(r["n_docs"]))
-        return f"{int(r['n_docs'])} [{r['p5']:.2f}-{r['p95']:.2f}]"
-
-    display["pr_auc"] = concatenated["pr_auc"].apply(
-        lambda v: "—"
-        if v is None or (isinstance(v, float) and pd.isna(v))
-        else f"{v:.2f}"
-    )
-
-    display["interviews_with_construct [p5-p95]"] = concatenated.apply(
-        fmt_n_docs, axis=1
-    )
-
-    return display
-
-
-def _normalize_result_input(
-    data: dict | list | "AnalysisResult" | list["AnalysisResult"],
-) -> dict[str, dict]:
-    """Normalize supported result inputs into a dict keyed by document_id.
-
-    Supported inputs:
-    - dict[str, dict] from analyze_directory()/analyze_csv()
-    - single AnalysisResult
-    - list[AnalysisResult]
-    - single JSON-like result dict with document_id/instances
-    - list of JSON-like result dicts
-    """
-    if hasattr(data, "document_id") and hasattr(data, "instances"):
-        data = [data]
-
-    if isinstance(data, dict):
-        if "document_id" in data and "instances" in data:
-            document_id = str(data["document_id"])
-            return {
-                document_id: {
-                    "document_id": document_id,
-                    "instances": data.get("instances", []),
-                }
-            }
-
-        normalized: dict[str, dict] = {}
-        for doc_id, result in data.items():
-            if hasattr(result, "model_dump"):
-                result = result.model_dump()
-            elif hasattr(result, "to_dict"):
-                result = result.to_dict()
-
-            if not isinstance(result, dict):
-                raise ComparisonError(
-                    f"Unsupported result type for document '{doc_id}': {type(result)}"
-                )
-
-            normalized[str(doc_id)] = {
-                "document_id": str(result.get("document_id", doc_id)),
-                "instances": result.get("instances", []),
-            }
-        return normalized
-
-    if isinstance(data, list):
-        normalized: dict[str, dict] = {}
-        for item in data:
-            if hasattr(item, "model_dump"):
-                item = item.model_dump()
-            elif hasattr(item, "to_dict"):
-                item = item.to_dict()
-
-            if not isinstance(item, dict):
-                raise ComparisonError(
-                    f"Unsupported list item type in comparison input: {type(item)}"
-                )
-            if "document_id" not in item:
-                raise ComparisonError(
-                    "Each in-memory result item must include a 'document_id'."
-                )
-
-            document_id = str(item["document_id"])
-            normalized[document_id] = {
-                "document_id": document_id,
-                "instances": item.get("instances", []),
-            }
-        return normalized
-
-    raise ComparisonError(f"Unsupported comparison input type: {type(data)}")
 
 
 class LLMTrackerComparer:
@@ -945,295 +266,427 @@ class LLMTrackerComparer:
     ) -> None:
         if config is not None:
             self.config = config
+        elif match_model is not None:
+            self.config = AnalyzerConfig(api_key=api_key, model_name=match_model)
         else:
-            if match_model is not None:
-                self.config = AnalyzerConfig(api_key=api_key, model_name=match_model)
-            else:
-                self.config = AnalyzerConfig(api_key=api_key)
+            self.config = AnalyzerConfig(api_key=api_key)
 
-    def _llm_match_construct(
-        self, construct: str, human_list: list[dict], llm_list: list[dict]
-    ) -> list[dict]:
-        """Make one LLM call for all quotes in a construct group and return match decisions."""
+    def _match_construct(
+        self,
+        construct: str,
+        human: list[ConstructInstance],
+        llm: list[ConstructInstance],
+    ):
         prompt = MATCH_PROMPT_TEMPLATE.format(
             construct=construct,
-            human_quotes=_format_quotes_for_prompt(human_list),
-            llm_quotes=_format_quotes_for_prompt(llm_list),
+            human_quotes=_format_quotes(human),
+            llm_quotes=_format_quotes(llm),
         )
-
-        attempts = 0
-        max_attempts = self.config.max_retries + 1
-        last_error: Exception | None = None
-
-        while attempts < max_attempts:
-            attempts += 1
+        last_error = None
+        for _ in range(self.config.max_retries + 1):
             try:
-                response_text, _ = call_llm_api(prompt, self.config)
-                return _parse_construct_match_response(response_text)
-            except (PromptingError, ComparisonError, json.JSONDecodeError) as e:
+                response_text, _metadata = call_llm_api(prompt, self.config)
+                return _parse_match_response(response_text)
+            except (PromptingError, ComparisonError) as e:
                 last_error = e
-                if attempts >= max_attempts:
-                    break
+        raise ComparisonError(f"Matcher failed for '{construct}': {last_error}")
 
-        raise ComparisonError(
-            f"Matcher failed after {max_attempts} attempts: {last_error}"
-        )
-
-    def _compare_instances(
-        self, human_instances: list[dict], llm_instances: list[dict]
-    ) -> list[dict]:
-        comparisons: list[dict] = []
-        human_by_construct = _group_by_construct(human_instances)
-        llm_by_construct = _group_by_construct(llm_instances)
-        all_constructs = sorted(set(human_by_construct) | set(llm_by_construct))
-
-        for construct in all_constructs:
-            human_list = list(human_by_construct.get(construct, []))
-            llm_list = list(llm_by_construct.get(construct, []))
-
-            matched: list[dict] = []
-            human_only: list[dict] = []
-            llm_only: list[dict] = []
-
-            # If one side is empty, everything is unmatched
-            if not human_list:
-                for llm_item in llm_list:
-                    llm_only.append(
-                        {
-                            "construct": construct,
-                            "quote": llm_item.get("quote"),
-                            "indices": llm_item.get("quote_index"),
-                            "confidence": llm_item.get("confidence"),
-                        }
-                    )
-                comparisons.append(
-                    {
-                        "construct": construct,
-                        "matched": matched,
-                        "human_only": human_only,
-                        "llm_only": llm_only,
-                    }
-                )
-                continue
-
-            if not llm_list:
-                for h in human_list:
-                    human_only.append(
-                        {
-                            "construct": construct,
-                            "quote": h.get("quote"),
-                            "indices": h.get("quote_index"),
-                            "confidence": h.get("confidence"),
-                        }
-                    )
-                comparisons.append(
-                    {
-                        "construct": construct,
-                        "matched": matched,
-                        "human_only": human_only,
-                        "llm_only": llm_only,
-                    }
-                )
-                continue
-
-            # One LLM call for all quotes in this construct
-            try:
-                match_decisions = self._llm_match_construct(
-                    construct, human_list, llm_list
-                )
-            except ComparisonError:
-                match_decisions = []
-
-            used_human: set[int] = set()
-            used_llm: set[int] = set()
-
-            for decision in match_decisions:
-                h_idx = decision["human_index"]
-                l_idx = decision["llm_index"]
-
-                if h_idx < 0 or h_idx >= len(human_list):
-                    continue
-                if l_idx < 0 or l_idx >= len(llm_list):
-                    continue
-                if h_idx in used_human or l_idx in used_llm:
-                    continue
-
-                h = human_list[h_idx]
-                llm_item = llm_list[l_idx]
-
-                matched.append(
-                    {
-                        "construct": construct,
-                        "human_quote": h.get("quote"),
-                        "llm_quote": llm_item.get("quote"),
-                        "human_indices": h.get("quote_index"),
-                        "llm_indices": llm_item.get("quote_index"),
-                        "human_confidence": h.get("confidence"),
-                        "llm_confidence": llm_item.get("confidence"),
-                        "paraphrase": decision["paraphrase"],
-                        "span_overlap": _compute_span_overlap(
-                            h.get("quote_index"), llm_item.get("quote_index")
-                        ),
-                        "match_confidence": decision["match_confidence"],
-                    }
-                )
-                used_human.add(h_idx)
-                used_llm.add(l_idx)
-
-            for i, h in enumerate(human_list):
-                if i not in used_human:
-                    human_only.append(
-                        {
-                            "construct": construct,
-                            "quote": h.get("quote"),
-                            "indices": h.get("quote_index"),
-                            "confidence": h.get("confidence"),
-                        }
-                    )
-
-            for i, llm_item in enumerate(llm_list):
-                if i not in used_llm:
-                    llm_only.append(
-                        {
-                            "construct": construct,
-                            "quote": llm_item.get("quote"),
-                            "indices": llm_item.get("quote_index"),
-                            "confidence": llm_item.get("confidence"),
-                        }
-                    )
-
-            comparisons.append(
-                {
-                    "construct": construct,
-                    "matched": matched,
-                    "human_only": human_only,
-                    "llm_only": llm_only,
-                }
-            )
-
-        return comparisons
-
-    def _write_comparison_results(
+    def _compare_construct(
         self,
-        results: dict[str, dict],
-        output_dir: str,
-    ) -> Path:
-        """Write comparison results to a timestamped output directory."""
-        output_path = _create_comparison_output_directory(
-            output_name=output_dir, base_dir=Path.cwd()
-        )
+        doc_id: str,
+        construct: str,
+        human: list[ConstructInstance],
+        llm: list[ConstructInstance],
+    ) -> list[dict]:
+        rows = []
+        if not human:
+            for item in llm:
+                row = _base_row(doc_id, construct, "llm_only")
+                row.update(
+                    llm_quote=item.quote,
+                    llm_indices=item.quote_index,
+                    llm_confidence=item.confidence,
+                    fp=1,
+                )
+                rows.append(row)
+            return rows
 
-        for doc_id, result in results.items():
-            out_file = output_path / "comparisons" / f"{doc_id}.json"
-            with open(out_file, "w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
+        if not llm:
+            for item in human:
+                row = _base_row(doc_id, construct, "human_only")
+                row.update(
+                    human_quote=item.quote,
+                    human_indices=item.quote_index,
+                    human_confidence=item.confidence,
+                    fn=1,
+                )
+                rows.append(row)
+            return rows
 
-        return output_path
+        used_human: set[int] = set()
+        used_llm: set[int] = set()
+        for match in self._match_construct(construct, human, llm):
+            h_idx = match["human_index"]
+            l_idx = match["llm_index"]
+            if (
+                h_idx in used_human
+                or l_idx in used_llm
+                or not 0 <= h_idx < len(human)
+                or not 0 <= l_idx < len(llm)
+            ):
+                continue
+
+            human_item = human[h_idx]
+            llm_item = llm[l_idx]
+            row = _base_row(doc_id, construct, "matched")
+            row.update(
+                human_quote=human_item.quote,
+                llm_quote=llm_item.quote,
+                human_indices=human_item.quote_index,
+                llm_indices=llm_item.quote_index,
+                human_confidence=human_item.confidence,
+                llm_confidence=llm_item.confidence,
+                paraphrase=match["paraphrase"],
+                span_overlap=_compute_span_overlap(
+                    human_item.quote_index, llm_item.quote_index
+                ),
+                match_confidence=match["match_confidence"],
+                tp=1,
+            )
+            rows.append(row)
+            used_human.add(h_idx)
+            used_llm.add(l_idx)
+
+        for i, item in enumerate(human):
+            if i not in used_human:
+                row = _base_row(doc_id, construct, "human_only")
+                row.update(
+                    human_quote=item.quote,
+                    human_indices=item.quote_index,
+                    human_confidence=item.confidence,
+                    fn=1,
+                )
+                rows.append(row)
+
+        for i, item in enumerate(llm):
+            if i not in used_llm:
+                row = _base_row(doc_id, construct, "llm_only")
+                row.update(
+                    llm_quote=item.quote,
+                    llm_indices=item.quote_index,
+                    llm_confidence=item.confidence,
+                    fp=1,
+                )
+                rows.append(row)
+
+        return rows
 
     def compare_results(
         self,
-        human_results: dict | list | "AnalysisResult" | list["AnalysisResult"],
-        llm_results: dict | list | "AnalysisResult" | list["AnalysisResult"],
+        human_results: dict[str, AnalysisResult],
+        llm_results: dict[str, AnalysisResult],
         output_dir: str | None = None,
-    ) -> dict[str, dict]:
-        """Compare human and LLM results already loaded in memory.
+    ) -> pd.DataFrame:
+        """Compare loaded human and LLM results and return row-level outcomes."""
+        rows = []
 
-        Args:
-            human_results: Human-coded results in one of the supported normalized
-                formats (AnalysisResult object(s), dict output from analyzer,
-                or JSON-like dict/list structure).
-            llm_results: LLM-coded results in one of the supported normalized formats.
-            output_dir: Optional output directory name prefix. If provided,
-                comparison JSON files are written to disk.
+        for doc_id in sorted(set(human_results) | set(llm_results)):
+            human_result = human_results.get(doc_id)
+            llm_result = llm_results.get(doc_id)
+            human_instances = human_result.instances if human_result else []
+            llm_instances = llm_result.instances if llm_result else []
+            human_by_construct = _group_by_construct(human_instances)
+            llm_by_construct = _group_by_construct(llm_instances)
+            constructs = sorted(set(human_by_construct) | set(llm_by_construct))
 
-        Returns:
-            Dict mapping document_id to comparison result.
-        """
-        human_normalized = _normalize_result_input(human_results)
-        llm_normalized = _normalize_result_input(llm_results)
-        all_doc_ids = sorted(set(human_normalized) | set(llm_normalized))
+            for construct in constructs:
+                rows.extend(
+                    self._compare_construct(
+                        doc_id,
+                        construct,
+                        human_by_construct.get(construct, []),
+                        llm_by_construct.get(construct, []),
+                    )
+                )
 
-        results: dict[str, dict] = {}
-
-        for doc_id in all_doc_ids:
-            human_data = human_normalized.get(doc_id, {})
-            llm_data = llm_normalized.get(doc_id, {})
-
-            comparisons = self._compare_instances(
-                human_data.get("instances", []), llm_data.get("instances", [])
-            )
-
-            results[doc_id] = {"document_id": doc_id, "comparisons": comparisons}
-
+        df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
         if output_dir:
-            self._write_comparison_results(results, output_dir)
-
-        return results
+            _save_comparison_table(df, output_dir)
+        return df
 
     def compare_documents(
         self,
         human_json: Path | str,
         llm_json: Path | str,
         output_dir: str | None = None,
-    ) -> dict:
-        human_data = _load_result_json(human_json)
-        llm_data = _load_result_json(llm_json)
-
-        document_id = (
-            human_data.get("document_id")
-            or llm_data.get("document_id")
-            or Path(human_json).stem
-        )
-
-        results = self.compare_results(
-            {"document_id": document_id, "instances": human_data.get("instances", [])},
-            {"document_id": document_id, "instances": llm_data.get("instances", [])},
+    ) -> pd.DataFrame:
+        """Compare one human result JSON with one LLM result JSON."""
+        human_result = _load_result_json(human_json)
+        llm_result = _load_result_json(llm_json)
+        doc_id = human_result.document_id
+        return self.compare_results(
+            {doc_id: human_result},
+            {doc_id: llm_result},
             output_dir=output_dir,
         )
-
-        return results[document_id]
 
     def compare_directories(
         self,
         human_dir: Path | str,
         llm_dir: Path | str,
         output_dir: str | None = None,
-    ) -> dict[str, dict]:
-        human_path = Path(human_dir)
-        llm_path = Path(llm_dir)
+    ) -> pd.DataFrame:
+        """Compare all JSON results in two analyzer output directories."""
+        human_files = _result_files(human_dir)
+        llm_files = _result_files(llm_dir)
+        human_results: dict[str, AnalysisResult] = {}
+        llm_results: dict[str, AnalysisResult] = {}
 
-        if not human_path.exists() or not human_path.is_dir():
-            raise ComparisonError(f"Human directory not found: {human_path}")
-        if not llm_path.exists() or not llm_path.is_dir():
-            raise ComparisonError(f"LLM directory not found: {llm_path}")
+        for doc_id in sorted(set(human_files) | set(llm_files)):
+            if doc_id in human_files:
+                human_results[doc_id] = _load_result_json(human_files[doc_id])
+            if doc_id in llm_files:
+                llm_results[doc_id] = _load_result_json(llm_files[doc_id])
 
-        human_files = {p.stem: p for p in human_path.glob("*.json")}
-        llm_files = {p.stem: p for p in llm_path.glob("*.json")}
-        all_doc_ids = sorted(set(human_files) | set(llm_files))
+        return self.compare_results(human_results, llm_results, output_dir=output_dir)
 
-        human_results: dict[str, dict] = {}
-        llm_results: dict[str, dict] = {}
 
-        for doc_id in all_doc_ids:
-            human_file = human_files.get(doc_id)
-            llm_file = llm_files.get(doc_id)
+def _divide(numerator: float, denominator: float) -> float | None:
+    return numerator / denominator if denominator else None
 
-            if human_file:
-                human_data = _load_result_json(human_file)
-                human_results[doc_id] = {
-                    "document_id": doc_id,
-                    "instances": human_data.get("instances", []),
-                }
 
-            if llm_file:
-                llm_data = _load_result_json(llm_file)
-                llm_results[doc_id] = {
-                    "document_id": doc_id,
-                    "instances": llm_data.get("instances", []),
-                }
+def _metrics(tp: float, fp: float, fn: float) -> dict:
+    tp, fp, fn = int(tp), int(fp), int(fn)
+    union = tp + fp + fn
+    observed_agreement = _divide(tp, union)
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "union": union,
+        "sensitivity": _divide(tp, tp + fn),
+        "precision": _divide(tp, tp + fp),
+        "f1": _divide(2 * tp, 2 * tp + fp + fn),
+        "pabak": None if observed_agreement is None else 2 * observed_agreement - 1,
+    }
 
-        return self.compare_results(
-            human_results,
-            llm_results,
-            output_dir=output_dir,
+
+def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
+    if counts.empty:
+        return pd.DataFrame(columns=["tp", "fp", "fn", "union", *METRICS])
+    return pd.DataFrame(
+        [_metrics(row.tp, row.fp, row.fn) for row in counts.itertuples()]
+    )
+
+
+def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
+    """Compute average precision from LLM coding confidence.
+
+    Matched rows are correct LLM predictions. LLM-only rows are incorrect LLM
+    predictions. Human-only rows are excluded because they are missed items, not
+    LLM predictions. The ranking score is ``llm_confidence`` from the coding
+    step, not matcher confidence.
+    """
+    if df.empty:
+        return {"Overall": None}
+
+    preds = df[df["status"].isin(["matched", "llm_only"])].copy()
+    if preds.empty:
+        return {"Overall": None}
+    preds["label"] = (preds["status"] == "matched").astype(int)
+    preds["score"] = pd.to_numeric(preds["llm_confidence"], errors="coerce")
+    preds = preds.dropna(subset=["score"])
+
+    results = {}
+    groups = [("Overall", preds)] + [
+        (construct, group) for construct, group in preds.groupby("construct")
+    ]
+    for name, group in groups:
+        if len(set(group["label"])) < 2:
+            results[name] = None
+        else:
+            results[name] = round(
+                float(average_precision_score(group["label"], group["score"])), 4
+            )
+    return results
+
+
+def _doc_stats(
+    construct: str, per_doc: pd.DataFrame, total_docs: int, constructs: list[str]
+) -> dict:
+    if construct == "Overall":
+        vals = per_doc["union"].tolist()
+        possible = total_docs * len(constructs)
+        n_docs = per_doc["doc_id"].nunique()
+    else:
+        rows = per_doc[per_doc["construct"] == construct]
+        vals = rows["union"].tolist()
+        possible = total_docs
+        n_docs = len(rows)
+
+    vals = vals + [0] * max(0, possible - len(vals))
+    vals = vals or [0]
+    return {
+        "n_docs": n_docs,
+        "p5": round(float(np.percentile(vals, 5)), 2),
+        "p95": round(float(np.percentile(vals, 95)), 2),
+    }
+
+
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    pairs = sorted(zip(values, weights), key=lambda item: item[0])
+    midpoint = sum(weights) / 2
+    total = 0.0
+    for value, weight in pairs:
+        total += weight
+        if total >= midpoint:
+            return value
+    return pairs[-1][0]
+
+
+def _weighted_summary(per_doc: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    constructs = list(per_doc["construct"].unique()) if not per_doc.empty else []
+    for construct in [*constructs, "Overall"]:
+        group = (
+            per_doc
+            if construct == "Overall"
+            else per_doc[per_doc["construct"] == construct]
         )
+        row = {
+            "construct": construct,
+            "tp": int(group["tp"].sum()),
+            "fp": int(group["fp"].sum()),
+            "fn": int(group["fn"].sum()),
+        }
+        for metric in [*METRICS, "pr_auc"]:
+            valid = group[["union", metric]].dropna()
+            valid = valid[valid["union"] > 0]
+            if valid.empty:
+                row[f"{metric}_median"] = None
+                row[f"{metric}_min"] = None
+                row[f"{metric}_max"] = None
+            else:
+                values = valid[metric].tolist()
+                weights = valid["union"].tolist()
+                row[f"{metric}_median"] = round(_weighted_median(values, weights), 4)
+                row[f"{metric}_min"] = round(min(values), 4)
+                row[f"{metric}_max"] = round(max(values), 4)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def compute_summary_tables(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Compute per-document, pooled, and weighted comparison summaries."""
+    if df.empty:
+        empty_counts = pd.DataFrame(columns=["doc_id", "construct", "tp", "fp", "fn"])
+        return empty_counts, pd.DataFrame(), pd.DataFrame()
+
+    grouped = df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]]
+    per_counts = grouped.sum().reset_index()
+    per_doc = pd.concat(
+        [
+            per_counts[["doc_id", "construct"]].reset_index(drop=True),
+            _metrics_for_counts(per_counts),
+        ],
+        axis=1,
+    )
+
+    concat_counts = df.groupby("construct")[["tp", "fp", "fn"]].sum().reset_index()
+    overall = pd.DataFrame(
+        [
+            {
+                "construct": "Overall",
+                "tp": concat_counts["tp"].sum(),
+                "fp": concat_counts["fp"].sum(),
+                "fn": concat_counts["fn"].sum(),
+            }
+        ]
+    )
+    concat_counts = pd.concat([concat_counts, overall], ignore_index=True)
+    concatenated = pd.concat(
+        [
+            concat_counts[["construct"]].reset_index(drop=True),
+            _metrics_for_counts(concat_counts),
+        ],
+        axis=1,
+    )
+
+    total_docs = df["doc_id"].nunique()
+    constructs = df["construct"].unique().tolist()
+    stats = [
+        _doc_stats(row.construct, per_doc, total_docs, constructs)
+        for row in concatenated.itertuples()
+    ]
+    concatenated = pd.concat([concatenated, pd.DataFrame(stats)], axis=1)
+
+    pr_auc = compute_pr_auc(df)
+    concatenated["pr_auc"] = concatenated["construct"].map(pr_auc)
+    per_doc["pr_auc"] = [
+        compute_pr_auc(
+            df[(df["doc_id"] == row.doc_id) & (df["construct"] == row.construct)]
+        ).get(row.construct)
+        for row in per_doc.itertuples()
+    ]
+
+    weighted = _weighted_summary(per_doc)
+    weighted_stats = [
+        _doc_stats(row.construct, per_doc, total_docs, constructs)
+        for row in weighted.itertuples()
+    ]
+    weighted = pd.concat([weighted, pd.DataFrame(weighted_stats)], axis=1)
+
+    for table in [per_doc, concatenated]:
+        for metric in [*METRICS, "pr_auc"]:
+            if metric in table:
+                table[metric] = table[metric].round(4)
+
+    return per_doc, concatenated, weighted
+
+
+def format_per_interview(per_interview: pd.DataFrame) -> pd.DataFrame:
+    """Return per-document metrics unchanged."""
+    return per_interview
+
+
+def _format_range(row: pd.Series, metric: str) -> str:
+    median = row.get(f"{metric}_median")
+    if median is None or pd.isna(median):
+        return "-"
+    return f"{median:.2f} [{row[f'{metric}_min']:.2f}-{row[f'{metric}_max']:.2f}]"
+
+
+def _format_doc_stats(row: pd.Series) -> str:
+    return f"{int(row['n_docs'])} [{row['p5']:.2f}-{row['p95']:.2f}]"
+
+
+def format_concatenated(concatenated: pd.DataFrame) -> pd.DataFrame:
+    """Format pooled construct metrics for notebook display."""
+    if concatenated.empty:
+        return concatenated
+    display = concatenated[["construct", "tp", "fp", "fn"]].copy()
+    for metric in [*METRICS, "pr_auc"]:
+        display[metric] = concatenated[metric].apply(
+            lambda value: "-" if pd.isna(value) else f"{value:.2f}"
+        )
+    display["interviews_with_construct [p5-p95]"] = concatenated.apply(
+        _format_doc_stats, axis=1
+    )
+    return display
+
+
+def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
+    """Format weighted summary metrics for notebook display."""
+    if weighted_summary.empty:
+        return weighted_summary
+    display = weighted_summary[["construct", "tp", "fp", "fn"]].copy()
+    for metric in [*METRICS, "pr_auc"]:
+        display[metric] = weighted_summary.apply(
+            lambda row, metric=metric: _format_range(row, metric), axis=1
+        )
+    display["interviews_with_construct [p5-p95]"] = weighted_summary.apply(
+        _format_doc_stats, axis=1
+    )
+    return display
