@@ -8,7 +8,7 @@ handling retries.
 import difflib
 import json
 import time
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 
@@ -30,95 +30,27 @@ class ResponseParseError(Exception):
     pass
 
 
-def _strip_code_fences(text: str) -> str:
-    """Remove surrounding markdown code fences when present."""
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        first_newline = cleaned.find("\n")
-        if first_newline != -1:
-            cleaned = cleaned[first_newline + 1 :]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-    return cleaned.strip()
-
-
-def _extract_first_json_object(text: str) -> Optional[str]:
-    """Extract the first JSON object from text using brace matching."""
-    start = text.find("{")
-    if start == -1:
-        return None
-
-    depth = 0
-    in_string = False
-    escape = False
-
-    for idx in range(start, len(text)):
-        ch = text[idx]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-        else:
-            if ch == '"':
-                in_string = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start : idx + 1]
-
-    return None
-
-
-def validate_llm_output(response_text: str) -> tuple[dict, bool]:
-    """Validate and minimally repair LLM output into the expected JSON shape.
-
-    Returns:
-        Tuple of (parsed_data, was_repaired).
-    """
+def validate_llm_output(response_text: str) -> dict:
+    """Validate LLM output into the expected JSON shape."""
     if response_text is None:
         raise ResponseParseError("Response text is empty.")
 
-    cleaned = _strip_code_fences(response_text)
-    was_repaired = cleaned != response_text.strip()
-
     try:
-        data: Any = json.loads(cleaned)
-    except json.JSONDecodeError:
-        extracted = _extract_first_json_object(cleaned) or _extract_first_json_object(
-            response_text
-        )
-        if not extracted:
-            raise ResponseParseError("No valid JSON object found in response.")
-        was_repaired = True
-        try:
-            data = json.loads(extracted)
-        except json.JSONDecodeError as e:
-            raise ResponseParseError(f"Invalid JSON after extraction: {e}") from e
+        data = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        raise ResponseParseError(
+            f"Invalid JSON in response (if using an uncommon model, it may not "
+            f"support response_format): {e}"
+        ) from e
 
-    if isinstance(data, list):
-        repaired = False
-        for item in data:
-            if isinstance(item, dict) and "instances" in item:
-                data = item
-                repaired = True
-                break
-        if repaired:
-            was_repaired = True
-        else:
-            raise ResponseParseError("Top-level JSON is a list without instances.")
-
-    if not isinstance(data, dict):
-        raise ResponseParseError("Top-level JSON must be an object.")
-
-    if "instances" not in data or not isinstance(data["instances"], list):
+    if (
+        not isinstance(data, dict)
+        or "instances" not in data
+        or not isinstance(data["instances"], list)
+    ):
         raise ResponseParseError('JSON must contain an "instances" list.')
 
-    return data, was_repaired
+    return data
 
 
 def construct_prompt(text: str, codebook: dict, template: str) -> str:
@@ -136,12 +68,19 @@ def construct_prompt(text: str, codebook: dict, template: str) -> str:
     return template.format(text=text, codebook=codebook_str)
 
 
-def find_quote_index(text: str, quote: str, threshold: float = 0.85) -> Optional[str]:
-    """Find the start:end index of a quote in the text using fuzzy matching.
+def find_quote_index(
+    text: str,
+    quote: str,
+    *,
+    fuzzy: bool = False,
+    threshold: float = 0.85,
+) -> Optional[str]:
+    """Find the start:end index of a quote in the source text.
 
     Args:
         text: The original document text.
         quote: The quote to find.
+        fuzzy: If True, fall back to fuzzy matching when exact matching fails.
         threshold: Minimum similarity ratio (0.0 to 1.0) to consider a match.
 
     Returns:
@@ -151,6 +90,9 @@ def find_quote_index(text: str, quote: str, threshold: float = 0.85) -> Optional
     start = text.find(quote)
     if start != -1:
         return f"{start}:{start + len(quote)}"
+
+    if not fuzzy:
+        return None
 
     quote_len = len(quote)
     best_ratio = 0.0
@@ -174,20 +116,22 @@ def parse_llm_response(
     response_text: str,
     document_id: str,
     original_text: str = "",
+    fuzzy_quote_matching: bool = False,
     threshold: float = 0.85,
-) -> tuple[AnalysisResult, bool]:
+) -> AnalysisResult:
     """Parse the LLM response into an AnalysisResult.
 
     Args:
         response_text: Raw text response from the LLM.
         document_id: The document identifier for the result.
         original_text: The original document text for finding quote indices.
-        threshold: threshold for fuzzy matching quote indicies in text for cases where the llm does not perfectly copy the quote.
+        fuzzy_quote_matching: Whether to use fuzzy matching for quote indices.
+        threshold: Minimum similarity ratio for fuzzy quote matching.
 
     Returns:
         Parsed AnalysisResult object.
     """
-    data, was_repaired = validate_llm_output(response_text)
+    data = validate_llm_output(response_text)
 
     instances = []
     raw_instances = data.get("instances", [])
@@ -196,7 +140,12 @@ def parse_llm_response(
         try:
             quote = item.get("quote", "")
             quote_index = (
-                find_quote_index(original_text, quote, threshold)
+                find_quote_index(
+                    original_text,
+                    quote,
+                    fuzzy=fuzzy_quote_matching,
+                    threshold=threshold,
+                )
                 if original_text
                 else None
             )
@@ -212,7 +161,7 @@ def parse_llm_response(
         except (ValueError, TypeError):
             continue
 
-    return AnalysisResult(document_id=document_id, instances=instances), was_repaired
+    return AnalysisResult(document_id=document_id, instances=instances)
 
 
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
@@ -238,6 +187,7 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
     payload = {
         "model": config.model_name,
         "messages": [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
     }
 
     start_time = time.time()
@@ -276,7 +226,6 @@ def prompt_for_constructs(
     codebook: dict,
     document_id: str,
     config: AnalyzerConfig,
-    threshold: float = 0.85,
 ) -> tuple[AnalysisResult, APIMetadata]:
     """Prompt the LLM to identify constructs in text."""
     prompt = construct_prompt(text, codebook, config.prompt_template)
@@ -291,11 +240,15 @@ def prompt_for_constructs(
         try:
             response_text, metadata = call_llm_api(prompt, config)
             last_metadata = metadata
-            result, was_repaired = parse_llm_response(
-                response_text, document_id, text, threshold
+            result = parse_llm_response(
+                response_text,
+                document_id,
+                text,
+                fuzzy_quote_matching=config.fuzzy_quote_matching,
+                threshold=config.quote_match_threshold,
             )
             metadata.num_retries = attempts - 1
-            metadata.output_repaired = was_repaired
+            metadata.output_repaired = False
             return result, metadata
 
         except (PromptingError, ResponseParseError) as e:
