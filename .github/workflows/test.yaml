@@ -21,16 +21,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
           cache: poetry
-
-      - name: Install Poetry
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install poetry 
 
       - name: Check Poetry configuration
         run: poetry check
@@ -40,11 +39,11 @@ jobs:
 
       - name: Run tests
         run: >
-          poetry run pytest
+          poetry run pytest tests
           --junitxml=pytest.xml
+          --cov=llm_tracker
           --cov-report=term-missing:skip-covered
           --cov-report=xml:coverage.xml
-          --cov=llm_tracker tests
           --log-level=DEBUG
           --verbose
 
@@ -62,14 +61,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: poetry
-
-      - name: Install Poetry
-        run: pipx install poetry
 
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -87,14 +86,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: poetry
-
-      - name: Install Poetry
-        run: pipx install poetry
 
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -109,17 +108,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Poetry
+        run: pipx install poetry
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: poetry
 
-      - name: Install Poetry
-        run: pipx install poetry
-
       - name: Install dependencies
         run: poetry install --no-interaction
 
       - name: Deptry
-        run: poetry run deptry ./src
+        run: poetry run deptry src
