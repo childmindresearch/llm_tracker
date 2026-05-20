@@ -3,45 +3,47 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
 
-def _resolve_api_key(value: str) -> str:
-    """Accept either a raw key string or a path to a .env file containing the key.
-
-    If value is a path to an existing .env file, loads it and reads
-    OPENROUTER_API_KEY from it. Otherwise treats value as the raw key.
+def _resolve_api_key(api_key_or_path: str) -> str:
+    """Resolve an OpenRouter API key from a raw key or env file path.
 
     Args:
     ----
-        value: Either a raw API key string or a path to a .env file.
+        api_key_or_path: Raw API key string or path to an env file containing
+            OPENROUTER_API_KEY.
 
     Returns:
     -------
-        The resolved API key string.
+        Resolved API key string.
 
     Raises:
     ------
-        ValueError: If the .env file exists but does not contain OPENROUTER_API_KEY,
-            or if the key is empty.
+        ValueError: If the env file exists but does not contain
+            OPENROUTER_API_KEY, or if the resolved key is empty.
 
     """
-    path = Path(value)
-    if path.is_file() and path.suffix == ".env":
-        load_dotenv(dotenv_path=path, override=True)
-        key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        if not key:
-            raise ValueError(
-                f"OPENROUTER_API_KEY not found or empty in '{path}'. "
-                "Make sure your .env file contains: OPENROUTER_API_KEY=your-key-here"
-            )
-        return key
-    return value
+    possible_env_file = Path(api_key_or_path)
+    is_env_file = possible_env_file.is_file() and (
+        possible_env_file.name == ".env" or possible_env_file.suffix == ".env"
+    )
+    if not is_env_file:
+        return api_key_or_path
+
+    load_dotenv(dotenv_path=possible_env_file, override=True)
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError(
+            f"OPENROUTER_API_KEY not found or empty in '{possible_env_file}'. "
+            "Make sure your env file contains OPENROUTER_API_KEY."
+        )
+    return api_key
 
 
-DEFAULT_PROMPT = """You are analyzing text to identify and extract instances of psychological constructs.
+DEFAULT_PROMPT = """You are analyzing text to identify and extract instances
+of psychological constructs.
 
 Text to analyze:
 {text}
@@ -50,15 +52,18 @@ Codebook of constructs:
 {codebook}
 
 Instructions:
-1. Identify which constructs from the codebook appear in the text
-2. For each construct found, extract ALL instances where it appears
+1. Identify which constructs from the codebook appear in the text.
+2. For each construct found, extract all instances where it appears.
 3. For each instance, provide:
    - Speaker ID if available
    - The construct name
    - An exact quote from the text
-   - Provide an ordinal score (0=construct is not mentioned or is negated, 1=indirect mention or not clear, 2=clear and prototypical mention of the construct) as to whether the interview clearly mentions the construct, according to its definition and examples.
+   - An ordinal confidence score:
+     0 = construct is not mentioned or is negated
+     1 = indirect mention or not clear
+     2 = clear and prototypical mention of the construct
 
-You MUST respond with ONLY a valid JSON object in exactly this format:
+You must respond with only a valid JSON object in exactly this format:
 {{
     "instances": [
         {{
@@ -73,11 +78,12 @@ You MUST respond with ONLY a valid JSON object in exactly this format:
 If no constructs are found, return: {{"instances": []}}
 
 Important:
-- Return ONLY the JSON object, no other text
-- Ensure all quotes are properly escaped for JSON
-- Include ALL instances found for ALL constructs
-- Use null (not "null" or "N/A") for missing speaker_id
-- Quotes MUST be copied EXACTLY from the text, character-for-character. Do not change capitalization, punctuation, ellipses (… vs ...), or any other characters.
+- Return only the JSON object, no other text.
+- Ensure all quotes are properly escaped for JSON.
+- Include all instances found for all constructs.
+- Use null for missing speaker_id.
+- Quotes must be copied exactly from the text, character for character.
+- Do not change capitalization, punctuation, ellipses, or other characters.
 
 Your response:"""
 
@@ -90,28 +96,25 @@ REQUEST_TIMEOUT = 120.0
 
 @dataclass
 class AnalyzerConfig:
-    """Configuration for the LLMTrackerAnalyzer.
+    """Configuration for analyzer and matcher LLM requests.
 
     Attributes
     ----------
-        api_key: OpenRouter API key. If not provided, reads from
-            OPENROUTER_API_KEY environment variable.
-        model_name: Model identifier for OpenRouter API.
-        custom_prompt: Optional custom prompt template with {text} and
-            {codebook} placeholders.
-        max_retries: Maximum number of retry attempts for failed requests.
+        api_key: OpenRouter API key, path to an env file, or None to read from
+            the OPENROUTER_API_KEY environment variable.
+        model_name: OpenRouter model name.
+        custom_prompt: Optional prompt template with text and codebook fields.
+        max_retries: Number of retry attempts after the first failed request.
         timeout: Request timeout in seconds.
-        base_url: Base URL for the API endpoint.
-        fuzzy_quote_matching: Whether to use fuzzy matching when an extracted
-            quote is not found exactly in the source text. Defaults to False.
-        quote_match_threshold: Minimum fuzzy match score when fuzzy matching is
-            enabled.
+        base_url: OpenRouter chat completions endpoint.
+        fuzzy_quote_matching: Whether to use fuzzy quote index recovery.
+        quote_match_threshold: Minimum fuzzy match score for quote recovery.
 
     """
 
-    api_key: Optional[str] = None
+    api_key: str | None = None
     model_name: str = DEFAULT_MODEL
-    custom_prompt: Optional[str] = None
+    custom_prompt: str | None = None
     max_retries: int = MAX_RETRIES
     timeout: float = REQUEST_TIMEOUT
     base_url: str = OPENROUTER_BASE_URL
@@ -119,36 +122,36 @@ class AnalyzerConfig:
     quote_match_threshold: float = 0.85
 
     def __post_init__(self) -> None:
-        """Validate configuration and set defaults from environment."""
+        """Resolve the API key after dataclass initialization."""
         self.api_key = self._load_api_key()
 
     def _load_api_key(self) -> str:
-        """Load and resolve the API key from a string or .env file path.
+        """Load the API key from config, env file, or environment variable.
 
         Returns
         -------
-            The resolved API key string.
+            Resolved API key string.
 
         Raises
         ------
-            ValueError: If no API key is found or the .env file is missing the key.
+            ValueError: If no API key is provided or available from the
+                environment.
 
         """
-        key = self.api_key or os.environ.get("OPENROUTER_API_KEY")
-        if key is None:
+        api_key = self.api_key or os.environ.get("OPENROUTER_API_KEY")
+        if api_key is None:
             raise ValueError(
-                "API key is required. Provide via api_key parameter or "
-                "set OPENROUTER_API_KEY environment variable."
+                "API key is required. Provide api_key or set OPENROUTER_API_KEY."
             )
-        return _resolve_api_key(key)
+        return _resolve_api_key(api_key)
 
     @property
     def prompt_template(self) -> str:
-        """Get the prompt template to use.
+        """Return the custom prompt template or the default prompt.
 
         Returns
         -------
-            The custom prompt if provided, otherwise the default prompt.
+            Prompt template used for document coding.
 
         """
-        return self.custom_prompt if self.custom_prompt else DEFAULT_PROMPT
+        return self.custom_prompt or DEFAULT_PROMPT

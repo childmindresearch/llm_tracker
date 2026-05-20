@@ -1,9 +1,4 @@
-"""Compare human and LLM construct codings.
-
-1. LLMTrackerComparer.compare_results aligns human and LLM quote instances.
-2. It returns one row per matched, human-only, or LLM-only instance.
-3. compute_summary_tables computes agreement metrics from those rows.
-"""
+"""Compare human and LLM construct codings."""
 
 import json
 from datetime import datetime
@@ -16,7 +11,6 @@ from sklearn.metrics import average_precision_score
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.models import AnalysisResult, ConstructInstance
 from llm_tracker.prompting import PromptingError, call_llm_api
-
 
 COMPARISON_COLUMNS = [
     "doc_id",
@@ -80,13 +74,17 @@ def _load_result_json(path: Path | str) -> AnalysisResult:
     """Load one saved encoding JSON file as an AnalysisResult.
 
     Args:
-        path: Path to a JSON file produced by the analyzer or by save_human_results()
+    ----
+        path: Path to an analyzer result JSON file.
 
     Returns:
+    -------
         The parsed AnalysisResult.
 
     Raises:
+    ------
         ComparisonError: If the file does not exist or is not valid JSON.
+
     """
     file_path = Path(path)
     if not file_path.exists():
@@ -101,14 +99,18 @@ def _result_json_dir(path: Path | str) -> Path:
     """Resolve the folder containing saved encoding JSON files.
 
     Args:
+    ----
         path: Either an analyzer run directory or its `encodings` subdir.
 
     Returns:
+    -------
         Directory containing per-document result JSON files.
 
     Raises:
+    ------
         ComparisonError: If the path is not a directory or contains no result
             JSON files.
+
     """
     directory = Path(path)
     if not directory.is_dir():
@@ -125,14 +127,18 @@ def _result_files(path: Path | str) -> dict[str, Path]:
     """Map document IDs to saved encoding JSON files.
 
     Args:
+    ----
         path: Either an analyzer run directory or its `encodings` subdirectory.
 
     Returns:
+    -------
         A dictionary mapping each document ID to its result JSON path.
 
     Raises:
+    ------
         ComparisonError: If the path cannot be resolved to a directory
             containing result JSON files.
+
     """
     return {p.stem: p for p in _result_json_dir(path).glob("*.json")}
 
@@ -141,11 +147,14 @@ def _save_comparison_table(df: pd.DataFrame, output_dir: str) -> Path:
     """Save the row-level comparison table to a timestamped CSV folder.
 
     Args:
+    ----
         df: Comparison DataFrame returned by compare_results().
         output_dir: Prefix for the timestamped output directory.
 
     Returns:
+    -------
         Path to the created output directory.
+
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out_dir = Path.cwd() / f"{output_dir}_{timestamp}"
@@ -163,11 +172,14 @@ def _group_by_construct(
     so this converts a flat list of instances into construct specific buckets.
 
     Args:
+    ----
         instances: Construct instances from one document.
 
     Returns:
+    -------
         A dictionary mapping each construct name to the instances coded for
         that construct.
+
     """
     grouped: dict[str, list[ConstructInstance]] = {}
     for item in instances:
@@ -184,10 +196,13 @@ def _format_quotes(quotes: list[ConstructInstance]) -> str:
     numbered and includes its character span when available.
 
     Args:
+    ----
         quotes: Construct instances for one construct in one document.
 
     Returns:
+    -------
         A numbered list of quotes and their source indices seperated by new lines.
+
     """
     lines = []
     for index, item in enumerate(quotes):
@@ -201,15 +216,19 @@ def _parse_match_response(response_text: str) -> list[dict]:
     """Parse and normalize the matcher LLM's JSON response.
 
     Args:
+    ----
         response_text: Raw text returned by the matcher LLM.
 
     Returns:
+    -------
         A list of valid match dictionaries with integer quote indices,
         boolean paraphrase flags, and match confidence 0.0-1.0.
 
     Raises:
+    ------
         ComparisonError: If the response is not valid JSON or does not contain
             a `matches` list.
+
     """
     try:
         data = json.loads(response_text)
@@ -250,11 +269,14 @@ def _parse_span(span: str | None) -> tuple[int, int] | None:
     """Parse a start:end character span.
 
     Args:
+    ----
         span: Character span string e.g. "10:25".
 
     Returns:
+    -------
         A (start, end) tuple, or None if the span is missing, malformed,
         or has an end index before its start index.
+
     """
     if not span:
         return None
@@ -279,12 +301,15 @@ def _compute_span_overlap(human_idx: str | None, llm_idx: str | None) -> float |
     """Compute overlap between human and LLM character spans.
 
     Args:
+    ----
         human_idx: Human coded quote span in start:end format.
         llm_idx: LLM coded quote span in start:end format.
 
     Returns:
+    -------
         Jaccard overlap between the two spans, or None if either span is
         missing or malformed.
+
     """
     human_span = _parse_span(human_idx)
     llm_span = _parse_span(llm_idx)
@@ -316,14 +341,17 @@ def _base_row(doc_id: str, construct: str, status: str) -> dict:
     """Create a default row for the comparison table.
 
     Args:
+    ----
         doc_id: Document identifier shared by the human and LLM results.
         construct: Construct being compared.
         status: Match status for the row: matched, human_only, or
             llm_only.
 
     Returns:
+    -------
         A comparison row with identifying fields filled in, optional fields set
         to None, and metric count fields initialized to zero.
+
     """
     return {
         "doc_id": doc_id,
@@ -369,16 +397,20 @@ class LLMTrackerComparer:
         """Ask the matcher LLM to align quotes for one construct.
 
         Args:
+        ----
             construct: Construct name shared by the quote lists.
             human: Human coded instances for this construct.
             llm: LLM coded instances for this construct.
 
         Returns:
+        -------
             Parsed matcher results describing which human and LLM quote indices
             refer to the same passage or idea.
 
         Raises:
+        ------
             ComparisonError: If the matcher fails after all retry attempts.
+
         """
         prompt = MATCH_PROMPT_TEMPLATE.format(
             construct=construct,
@@ -406,14 +438,17 @@ class LLMTrackerComparer:
         """Compare human and LLM instances for one construct in one document.
 
         Args:
+        ----
             doc_id: Document identifier for the compared instances.
             construct: Construct being compared.
             human: Human coded instances for this construct.
             llm: LLM coded instances for this construct.
 
         Returns:
+        -------
             Row dictionaries for matched, human only, and LLM only instances.
             These rows feed the comparison DataFrame and metric counts.
+
         """
 
         def human_only_row(item: ConstructInstance) -> dict:
@@ -496,14 +531,17 @@ class LLMTrackerComparer:
         """Compare human and LLM results across all documents.
 
         Args:
+        ----
             human_results: Human coded results keyed by document ID.
             llm_results: LLM coded results keyed by document ID.
             output_dir: Optional base name for saving the row level comparison
                 table to a timestamped CSV folder.
 
         Returns:
+        -------
             Comparison DataFrame with one row per matched,
             human only, or LLM only construct instance.
+
         """
         rows = []
 
@@ -541,20 +579,24 @@ class LLMTrackerComparer:
         llm_json: Path | str,
         output_dir: str | None = None,
     ) -> pd.DataFrame:
-        """Compare one saved human result JSON with one saved LLM result JSON.
+        """Compare one reference result JSON with one LLM result JSON.
 
         Args:
-            human_json: Path to the saved human result JSON file.
-            llm_json: Path to the saved LLM result JSON file.
+        ----
+            human_json: Path to the reference result JSON file.
+            llm_json: Path to the LLM result JSON file.
             output_dir: Optional base name for saving the comparison table.
 
         Returns:
+        -------
             Comparison DataFrame with one row per matched, human only, or LLM
             only construct instance.
 
         Raises:
+        ------
             ComparisonError: If either JSON file cannot be loaded or matching
             fails.
+
         """
         human_result = _load_result_json(human_json)
         llm_result = _load_result_json(llm_json)
@@ -571,20 +613,24 @@ class LLMTrackerComparer:
         llm_dir: Path | str,
         output_dir: str | None = None,
     ) -> pd.DataFrame:
-        """Compare saved human and LLM result directories.
+        """Compare reference and LLM result directories.
 
         Args:
-            human_dir: Path to a human result directory or encodings folder.
+        ----
+            human_dir: Path to a reference result directory or encodings folder.
             llm_dir: Path to an LLM result directory or encodings folder.
             output_dir: Optional base name for saving the comparison table.
 
         Returns:
+        -------
             Comparison DataFrame with one row per matched, human only, or LLM
             only construct instance.
 
         Raises:
+        ------
             ComparisonError: If either directory cannot be loaded or matching
             fails.
+
         """
         human_files = _result_files(human_dir)
         llm_files = _result_files(llm_dir)
@@ -597,11 +643,15 @@ class LLMTrackerComparer:
             if doc_id in llm_files:
                 llm_results[doc_id] = _load_result_json(llm_files[doc_id])
 
-        return self.compare_results(human_results, llm_results, output_dir=output_dir)
+        return self.compare_results(
+            human_results,
+            llm_results,
+            output_dir=output_dir,
+        )
 
 
 def _metrics(tp: int, fp: int, fn: int) -> dict:
-    """Compute agreement metrics from true positive, false positive, and false negative counts.
+    """Compute agreement metrics from tp, fp, and fn counts.
 
     Args:
         tp: Number of matched human and LLM instances.
@@ -630,10 +680,13 @@ def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
     """Compute agreement metrics for each row of count totals.
 
     Args:
+    ----
         counts: DataFrame with tp, fp, and fn columns.
 
     Returns:
+    -------
         DataFrame containing counts and agreement metrics for each input row.
+
     """
     if counts.empty:
         return pd.DataFrame(columns=["tp", "fp", "fn", "union", *METRICS])
@@ -651,12 +704,15 @@ def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
     not matcher confidence.
 
     Args:
+    ----
         df: Row level comparison DataFrame.
 
     Returns:
+    -------
         Average precision scores for the full comparison table and for each
         construct. A value is None unless the group has at least one matched
         prediction and at least one LLM only prediction.
+
     """
     if df.empty:
         return {"Overall": None}
@@ -688,14 +744,17 @@ def _doc_stats(
     """Summarize how often a construct appears across documents.
 
     Args:
+    ----
         construct: Construct name to summarize, or Overall for all constructs.
         per_doc: Per document metric table with union counts.
         total_docs: Total number of documents in the comparison.
         constructs: All construct names present in the comparison.
 
     Returns:
+    -------
         Dictionary with the number of documents containing the construct and
         the fifth and ninety fifth percentiles of per document union counts.
+
     """
     if construct == "Overall":
         union_counts = per_doc["union"].tolist()
@@ -721,11 +780,14 @@ def _weighted_median(values: list[float], weights: list[float]) -> float:
     """Compute the median value after applying row weights.
 
     Args:
+    ----
         values: Metric values to summarize.
         weights: Weights for each value, usually the union count for that row.
 
     Returns:
+    -------
         Weighted median of the input values.
+
     """
     value_weight_pairs = sorted(zip(values, weights), key=lambda item: item[0])
     halfway_weight = sum(weights) / 2
@@ -743,11 +805,14 @@ def _weighted_summary(per_doc: pd.DataFrame) -> pd.DataFrame:
     """Build weighted metric summaries across documents.
 
     Args:
+    ----
         per_doc: Per document metric table from compute_summary_tables.
 
     Returns:
+    -------
         DataFrame with one row per construct plus Overall. Each metric is
         summarized with a weighted median, minimum, and maximum.
+
     """
     rows = []
     construct_names = list(per_doc["construct"].unique()) if not per_doc.empty else []
@@ -791,14 +856,17 @@ def compute_summary_tables(
     """Compute summary tables from row level comparison results.
 
     Args:
+    ----
         df: Comparison DataFrame returned by compare_results.
 
     Returns:
+    -------
         A tuple of three DataFrames:
         per_doc: Metrics grouped by document and construct.
         concatenated: Metrics pooled across documents by construct, plus overall.
         weighted: Weighted median, minimum, and maximum metrics by construct,
             plus overall.
+
     """
     if df.empty:
         empty_counts = pd.DataFrame(columns=["doc_id", "construct", "tp", "fp", "fn"])
@@ -874,14 +942,17 @@ def _format_range(row: pd.Series, metric: str) -> str:
     """Format one weighted summary metric for display.
 
     Args:
+    ----
         row: Weighted summary row containing median, minimum, and maximum
             columns for the metric.
         metric: Base metric name, such as sensitivity, precision, f1, pabak,
             or pr_auc.
 
     Returns:
+    -------
         Display string with the median followed by the minimum and maximum
         values. Returns a dash when the median is missing.
+
     """
     median_value = row.get(f"{metric}_median")
     if median_value is None or pd.isna(median_value):
@@ -896,10 +967,14 @@ def _format_doc_stats(row: pd.Series) -> str:
     """Format document count and percentile spread for display.
 
     Args:
+    ----
         row: Summary row containing n_docs, p5, and p95 values.
 
     Returns:
-        Display string with document count followed by the 5th and 95th percentile values.
+    -------
+        Display string with document count followed by the 5th and 95th
+        percentile values.
+
     """
     document_count = int(row["n_docs"])
     p5 = row["p5"]
@@ -911,10 +986,13 @@ def format_concatenated(concatenated: pd.DataFrame) -> pd.DataFrame:
     """Format pooled construct metrics for notebook display.
 
     Args:
+    ----
         concatenated: Pooled construct metrics from compute_summary_tables.
 
     Returns:
+    -------
         Display DataFrame with rounded metrics and formatted document stats.
+
     """
     if concatenated.empty:
         return concatenated
@@ -937,10 +1015,13 @@ def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
     """Format weighted summary metrics for notebook display.
 
     Args:
+    ----
         weighted_summary: Weighted summary table from compute_summary_tables.
 
     Returns:
+    -------
         Display DataFrame with metric ranges and formatted document stats.
+
     """
     if weighted_summary.empty:
         return weighted_summary

@@ -8,7 +8,6 @@ handling retries.
 import difflib
 import json
 import time
-from typing import Optional
 
 import httpx
 
@@ -19,26 +18,43 @@ from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
 class PromptingError(Exception):
     """Exception raised when prompting fails after all retries."""
 
-    def __init__(self, message: str, metadata: Optional[APIMetadata] = None) -> None:
+    def __init__(self, message: str, metadata: APIMetadata | None = None) -> None:
+        """Create a prompting error.
+
+        Args:
+        ----
+            message: Error message describing the failure.
+            metadata: Optional API metadata captured before the failure.
+
+        """
         super().__init__(message)
         self.metadata = metadata
 
 
-class ResponseParseError(Exception):
-    """Exception raised when response cannot be parsed as valid JSON."""
-
-    pass
-
-
 def validate_llm_output(response_text: str) -> dict:
-    """Validate LLM output into the expected JSON shape."""
+    """Validate LLM output into the expected JSON shape.
+
+    Args:
+    ----
+        response_text: Raw response text returned by the LLM.
+
+    Returns:
+    -------
+        Parsed response dictionary containing an instances list.
+
+    Raises:
+    ------
+        PromptingError: If the response is empty, invalid JSON, or missing the
+            expected instances list.
+
+    """
     if response_text is None:
-        raise ResponseParseError("Response text is empty.")
+        raise PromptingError("Response text is empty.")
 
     try:
         data = json.loads(response_text)
     except json.JSONDecodeError as e:
-        raise ResponseParseError(
+        raise PromptingError(
             f"Invalid JSON in response (if using an uncommon model, it may not "
             f"support response_format): {e}"
         ) from e
@@ -48,7 +64,7 @@ def validate_llm_output(response_text: str) -> dict:
         or "instances" not in data
         or not isinstance(data["instances"], list)
     ):
-        raise ResponseParseError('JSON must contain an "instances" list.')
+        raise PromptingError('JSON must contain an "instances" list.')
 
     return data
 
@@ -57,12 +73,15 @@ def construct_prompt(text: str, codebook: dict, template: str) -> str:
     """Construct the full prompt by inserting text and codebook.
 
     Args:
+    ----
         text: The document text to analyze.
         codebook: The codebook dictionary containing construct definitions.
         template: The prompt template with {text} and {codebook} placeholders.
 
     Returns:
+    -------
         The complete prompt string ready for the API.
+
     """
     codebook_str = json.dumps(codebook, indent=2)
     return template.format(text=text, codebook=codebook_str)
@@ -74,18 +93,23 @@ def find_quote_index(
     *,
     fuzzy: bool = False,
     threshold: float = 0.85,
-) -> Optional[str]:
+) -> str | None:
     """Find the start:end index of a quote in the source text.
 
     Args:
+    ----
         text: The original document text.
         quote: The quote to find.
         fuzzy: If True, fall back to fuzzy matching when exact matching fails.
         threshold: Minimum similarity ratio (0.0 to 1.0) to consider a match.
 
     Returns:
+    -------
         String in format "start:end" or None if not found.
+
     """
+    if not quote:
+        return None
 
     start = text.find(quote)
     if start != -1:
@@ -122,6 +146,7 @@ def parse_llm_response(
     """Parse the LLM response into an AnalysisResult.
 
     Args:
+    ----
         response_text: Raw text response from the LLM.
         document_id: The document identifier for the result.
         original_text: The original document text for finding quote indices.
@@ -129,7 +154,14 @@ def parse_llm_response(
         threshold: Minimum similarity ratio for fuzzy quote matching.
 
     Returns:
+    -------
         Parsed AnalysisResult object.
+
+    Raises:
+    ------
+        PromptingError: If the response is not valid JSON or does not contain
+            the expected instances list.
+
     """
     data = validate_llm_output(response_text)
 
@@ -168,14 +200,19 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
     """Make a request to the OpenRouter API.
 
     Args:
+    ----
         prompt: The complete prompt to send.
         config: Configuration including API key and model.
 
     Returns:
-        Tuple of (response_text, api_metadata).
+    -------
+        Response text and API metadata.
 
     Raises:
-        PromptingError: If the API request fails.
+    ------
+        PromptingError: If the API request fails or the response shape is
+            unexpected.
+
     """
     headers = {
         "Authorization": f"Bearer {config.api_key}",
@@ -227,16 +264,31 @@ def prompt_for_constructs(
     document_id: str,
     config: AnalyzerConfig,
 ) -> tuple[AnalysisResult, APIMetadata]:
-    """Prompt the LLM to identify constructs in text."""
+    """Prompt the LLM to identify constructs in text.
+
+    Args:
+    ----
+        text: Document text to analyze.
+        codebook: Codebook dictionary containing construct definitions.
+        document_id: Identifier to attach to the parsed analysis result.
+        config: Analyzer configuration for prompting, retries, and quote
+            matching.
+
+    Returns:
+    -------
+        Parsed analysis result and API metadata from the successful request.
+
+    Raises:
+    ------
+        PromptingError: If every request or response parsing attempt fails.
+
+    """
     prompt = construct_prompt(text, codebook, config.prompt_template)
 
-    attempts = 0
     max_attempts = config.max_retries + 1
-    last_metadata: Optional[APIMetadata] = None
+    last_metadata: APIMetadata | None = None
 
-    while attempts < max_attempts:
-        attempts += 1
-
+    for attempt in range(max_attempts):
         try:
             response_text, metadata = call_llm_api(prompt, config)
             last_metadata = metadata
@@ -247,35 +299,35 @@ def prompt_for_constructs(
                 fuzzy_quote_matching=config.fuzzy_quote_matching,
                 threshold=config.quote_match_threshold,
             )
-            metadata.num_retries = attempts - 1
-            metadata.output_repaired = False
+            metadata.num_retries = attempt
             return result, metadata
 
-        except (PromptingError, ResponseParseError) as e:
+        except PromptingError as e:
             if last_metadata is not None:
-                last_metadata.num_retries = attempts - 1
-            if attempts < max_attempts:
+                last_metadata.num_retries = attempt
+
+            if attempt < max_attempts - 1:
                 time.sleep(1)
                 continue
-            else:
-                if last_metadata is None:
-                    error_metadata = APIMetadata(
-                        model=config.model_name,
-                        num_retries=attempts - 1,
-                        error_message=str(e),
-                        error_type=type(e).__name__,
-                        error_output=str(e),
-                    )
-                else:
-                    last_metadata.error_message = str(e)
-                    last_metadata.error_type = type(e).__name__
-                    last_metadata.error_output = str(e)
-                    error_metadata = last_metadata
 
-                raise PromptingError(
-                    f"Failed after {max_attempts} attempts for document "
-                    f"'{document_id}'. Last error: {e}",
-                    metadata=error_metadata,
-                ) from e
+            if last_metadata is None:
+                error_metadata = APIMetadata(
+                    model=config.model_name,
+                    num_retries=attempt,
+                    error_message=str(e),
+                    error_type=type(e).__name__,
+                    error_output=str(e),
+                )
+            else:
+                last_metadata.error_message = str(e)
+                last_metadata.error_type = type(e).__name__
+                last_metadata.error_output = str(e)
+                error_metadata = last_metadata
+
+            raise PromptingError(
+                f"Failed after {max_attempts} attempts for document "
+                f"'{document_id}'. Last error: {e}",
+                metadata=error_metadata,
+            ) from e
 
     raise PromptingError(f"Unexpected failure for document '{document_id}'")

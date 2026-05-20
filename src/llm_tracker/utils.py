@@ -1,6 +1,5 @@
 """Utility functions for llm_tracker."""
 
-from __future__ import annotations
 
 import pandas as pd
 
@@ -18,13 +17,16 @@ def format_coding_table(
     Prints a description and column definitions on call.
 
     Args:
+    ----
         results: Output of analyze_directory(), analyze_csv(), or
             load_human_coding(); maps document IDs to AnalysisResult objects.
         max_quote_length: Optional truncation length for the quote column,
             useful for display purposes.
 
     Returns:
+    -------
         pandas DataFrame with one row per construct instance across all documents.
+
     """
     print(
         "Coding Table\n"

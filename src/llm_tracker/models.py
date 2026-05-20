@@ -1,11 +1,4 @@
-"""Data models for llm_tracker package.
-
-This module defines the Pydantic models used throughout the package for
-type validation and serialization of analysis results, construct instances,
-and codebook definitions.
-"""
-
-from typing import Optional
+"""Data models for llm_tracker."""
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +16,7 @@ class ConstructDefinition(BaseModel):
 
     name: str = Field(..., description="Name of the psychological construct")
     definition: str = Field(..., description="Definition of the construct")
-    examples: Optional[list[str]] = Field(
+    examples: list[str] | None = Field(
         default=None, description="Optional example phrases demonstrating the construct"
     )
 
@@ -56,14 +49,14 @@ class ConstructInstance(BaseModel):
     """
 
     construct: str = Field(..., description="Name of the identified construct")
-    speaker_id: Optional[str] = Field(
+    speaker_id: str | None = Field(
         default=None, description="Speaker identifier if available"
     )
     quote: str = Field(..., description="Exact quote from the text")
-    quote_index: Optional[str] = Field(
+    quote_index: str | None = Field(
         default=None, description="Start:end indices of quote in original text"
     )
-    confidence: Optional[int] = Field(
+    confidence: int | None = Field(
         default=None,
         ge=0,
         le=2,
@@ -104,17 +97,16 @@ class APIMetadata(BaseModel):
 
     """
 
-    model: Optional[str] = None
-    usage: Optional[dict] = None
-    created: Optional[int] = None
-    response_id: Optional[str] = None
-    latency_ms: Optional[float] = None
-    raw_response: Optional[dict] = None
+    model: str | None = None
+    usage: dict | None = None
+    created: int | None = None
+    response_id: str | None = None
+    latency_ms: float | None = None
+    raw_response: dict | None = None
     num_retries: int = 0
-    output_repaired: Optional[bool] = None
-    error_message: Optional[str] = None
-    error_type: Optional[str] = None
-    error_output: Optional[str] = None
+    error_message: str | None = None
+    error_type: str | None = None
+    error_output: str | None = None
 
 
 class ErrorRecord(BaseModel):
@@ -134,4 +126,4 @@ class ErrorRecord(BaseModel):
     document_path: str
     error_message: str
     model_used: str = ""
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
