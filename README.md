@@ -155,7 +155,7 @@ recovered_results, recovered_metadata, remaining_errors = analyzer.retry_errors(
 
 ## Tutorial
 
-See [tutorial_v3.ipynb](tutorial_v3.ipynb) for a fuller walkthrough using the
+See [tutorial.ipynb](tutorial.ipynb) for a fuller walkthrough using the
 sample data and codebook.
 
 ## Testing
