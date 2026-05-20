@@ -1,0 +1,294 @@
+{
+    "self_management": {
+        "definition": "Umbrella term for self-care, coping, and any forms of managing own MH outside of formal care",
+        "examples": []
+    },
+    "self_management_reason": {
+        "definition": "Student describes why they chose to manage their own mental health, or why they chose a specific self-management strategy",
+        "examples": [
+            "self-managing because of previous negative experience with treatment",
+            "self-managing because of a dispositional preference to be independent",
+            "supplements treatment with self-management because of limited therapy sessions"
+        ]
+    },
+    "self_management_description": {
+        "definition": "Student describes the type of self-management they engage in; any practice or tool",
+        "examples": [
+            "going on walk to try and manage mental health did not work",
+            "being with fellow church congregants as a source of support",
+            "attending an online counselling course on building resilience",
+            "maintaining boundaries in challenging relationships"
+        ]
+    },
+    "self_management_challenges": {
+        "definition": "Barriers to self-management; failed attempts at self-management. From the student's POV",
+        "examples": [
+            "schoolwork or other responsibilities take up too much time",
+            "student tried journalling, but it does not help manage their mental health",
+            "student feels like they burden friends by reaching out so they do not access social support"
+        ]
+    },
+    "self_management_harmful": {
+        "definition": "Student describes engaging in harmful practices to try and manage their mental health",
+        "examples": [
+            "physical self-harm to try and achieve mental health relief",
+            "substance use to try and detach from problems",
+            "endlessly scrolling on phone as a form of disengagement",
+            "excessive exercise"
+        ]
+    },
+    "seeking_formal_care": {
+        "definition": "A student describes any experiences SEEKING formal mental health care (e.g., therapist, counselor, psychiatrist/doctor, psychologist). Alternatively, in sites/situations where formal services may not be an option, an entity/individual whom the student considers to have expertise",
+        "examples": []
+    },
+    "seeking_care_reason_experience": {
+        "definition": "Students described what made them seek formal services and why; the tipping point",
+        "examples": [
+            "seeks services because frightened from suicidal thoughts",
+            "seeks services because told by partner",
+            "seeks services because no longer able to study",
+            "seeks services because of weight loss that turns out to be mental health-related",
+            "voluntary or involuntary hospitalization"
+        ]
+    },
+    "seeking_care_reason_intention": {
+        "definition": "Student discusses what hypothetically would or will make them seek care in the future",
+        "examples": [
+            "if I experience grief in my life, I will probably seek therapy",
+            "I would like to enter therapy for xyz at some point, I haven't yet, but it's on my to do list",
+            "my psychiatrist told me to reach out and set up an appointment with her if I xyz"
+        ]
+    },
+    "seeking_care_description": {
+        "definition": "A student describes how they reached out to care providers",
+        "examples": [
+            "browse therapy clinics and contact the one with therapist headshots",
+            "download app and schedule first appointment with digital provider",
+            "ask friend for support to contact services together",
+            "Re-contact the therapist from before"
+        ]
+    },
+    "seeking_care_challenges": {
+        "definition": "Barriers to formal care; failed attempts at seeking care. External setback the student encountered once they had actually taken a step to seek care",
+        "examples": []
+    },
+    "seeking_care_reluctance": {
+        "definition": "Describes any reluctance to seek professional care, including not wanting to seek care, believing that care will not be helpful or 'not for me', etc",
+        "examples": []
+    },
+    "care_encounter": {
+        "definition": "A student describes any experiences RECEIVING formal mental health care",
+        "examples": []
+    },
+    "care_encounter_description": {
+        "definition": "A student discusses their experiences of receiving and/or remaining in formal mental health services",
+        "examples": []
+    },
+    "care_encounter_unpleasant": {
+        "definition": "A student discusses any negative, unpleasant or harmful experiences they've had of receiving formal mental health services",
+        "examples": []
+    },
+    "care_encounter_ending": {
+        "definition": "Discusses reasons for or experiences with ending (or extensively pausing) care at any stage of formal care",
+        "examples": []
+    },
+    "mental_health_beliefs": {
+        "definition": "A student describes mis/understandings or 'meta' commentary about mental health/illness, care, or treatment",
+        "examples": []
+    },
+    "problem_recognition": {
+        "definition": "Interviewee describes the process of recognition or identifying that a mental health-related issue is a 'problem'",
+        "examples": [
+            "learning in class about the symptoms of depression and realizing that it is what they experience",
+            "realizing that anxiety is normalized in their community",
+            "first time experiencing a mental illness episode",
+            "having a 'wake-up call' experience"
+        ]
+    },
+    "understanding_mental_illness": {
+        "definition": "Describes participant's level of knowledge, awareness, and understanding of mental health and illness",
+        "examples": [
+            "I think depression is mostly genetic",
+            "Anxiety is caused by too much social media",
+            "ADHD is being diagnosed more often these days",
+            "Depression is just feeling sad a lot"
+        ]
+    },
+    "recovery_and_treatment": {
+        "definition": "Describes participant's beliefs about what recovery or mental well-being means",
+        "examples": [
+            "You can learn to cope, but mental illness never really goes away",
+            "I used to think recovery meant being happy all the time",
+            "I believe healing comes from within, not from external treatments",
+            "Therapy is helpful if you find the right therapist"
+        ]
+    },
+    "self_identity": {
+        "definition": "A student discusses demographic or social/political/cultural identities",
+        "examples": []
+    },
+    "other_individual_factors": {
+        "definition": "Any other internal or person-specific factors that impact mental health and help-seeking not included in the codebook",
+        "examples": []
+    },
+    "daily_functioning": {
+        "definition": "A student describes their ability to function and participate in daily activities and fulfill life responsibilities",
+        "examples": []
+    },
+    "physical_health_symptoms": {
+        "definition": "A student describes how physical health impacts their wellbeing or help-seeking",
+        "examples": []
+    },
+    "diet_exercise": {
+        "definition": "A student discusses anything related to food/nutrition/dietary/exercise behaviors",
+        "examples": []
+    },
+    "sleep": {
+        "definition": "A student discusses anything related to sleep",
+        "examples": []
+    },
+    "substance_use": {
+        "definition": "A student describes thoughts or experiences related to using substances",
+        "examples": []
+    },
+    "stress": {
+        "definition": "A participant describes experiences of stress, pressure, or tension",
+        "examples": []
+    },
+    "stressor": {
+        "definition": "A participant specifies an external circumstance that is causing them stress",
+        "examples": []
+    },
+    "stress_response": {
+        "definition": "A participant describes experiences of stress/pressure/tension AND a physiological/physical, (social) behavioral, emotional, or cognitive response",
+        "examples": []
+    },
+    "trauma": {
+        "definition": "Witnessing, experiencing, or being threatened with death, serious injury, or physical or sexual violence",
+        "examples": []
+    },
+    "guilt_shame": {
+        "definition": "A student describes feelings of guilt or shame",
+        "examples": []
+    },
+    "psychological_pain": {
+        "definition": "Describes any internal experiences of severe emotional distress, overwhelming emotional pain, or overall aversiveness towards life",
+        "examples": []
+    },
+    "nssi": {
+        "definition": "Describes hurting themselves on purpose without the intent to die, for reasons that are not socially sanctioned",
+        "examples": []
+    },
+    "suicide_ideation": {
+        "definition": "Student has thoughts pertaining to suicide/ending own life",
+        "examples": []
+    },
+    "suicide_method": {
+        "definition": "Describes having had any direct or indirect method/plan to end life",
+        "examples": []
+    },
+    "suicide_behavior": {
+        "definition": "Describes any previous suicide-related behaviors enacted by the student",
+        "examples": []
+    },
+    "suicide_reason_dying": {
+        "definition": "Describes any external or internal events/factors that gave rise to thoughts or desires to die",
+        "examples": []
+    },
+    "suicide_reason_not_dying": {
+        "definition": "Why hasn't the student attempted? What has stopped/prevented the student from dying by suicide?",
+        "examples": []
+    },
+    "suicide_other": {
+        "definition": "Witnessing, observing, or hearing about someone else's suicidal intent, ideation, method/plan, attempt or deaths",
+        "examples": []
+    },
+    "social_relationships_family": {
+        "definition": "Discussion of family relationships impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_friends": {
+        "definition": "Discussion of friend/roommate/peer relationships impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_romantic": {
+        "definition": "Discussion of romantic/sexual relationships impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_pet": {
+        "definition": "Discussion of pet relationships impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_faculty": {
+        "definition": "Discussion of faculty/supervisor relationships impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_other": {
+        "definition": "Discussion of other relationship types impact on mental health or help-seeking",
+        "examples": []
+    },
+    "social_relationships_bullying": {
+        "definition": "Bullying occurring at the peer level, usually in school environment",
+        "examples": []
+    },
+    "social_relationships_negative": {
+        "definition": "Any descriptions of social difficulties/discomforts/conflicts (other than bullying)",
+        "examples": []
+    },
+    "university_life": {
+        "definition": "A student describes aspects of life as a university student",
+        "examples": []
+    },
+    "university_academics": {
+        "definition": "Describes how grades/academic performance impact mental health and help-seeking behaviors",
+        "examples": []
+    },
+    "university_transitions": {
+        "definition": "Major life transitions that happened around/during college",
+        "examples": []
+    },
+    "university_dropout": {
+        "definition": "A student mentions thoughts, intentions or experiences related to dropping out from college",
+        "examples": []
+    },
+    "university_services": {
+        "definition": "A student describes mental health services at the university",
+        "examples": []
+    },
+    "physical_environment": {
+        "definition": "Describes physical spaces/facilities, infrastructure, green spaces, living conditions/arrangements, and other aspects of the physical environment",
+        "examples": []
+    },
+    "healthcare_system": {
+        "definition": "A student describes experiences of systemic or logistical aspects of the healthcare system",
+        "examples": []
+    },
+    "finances": {
+        "definition": "Any discussion of finances that may impact wellbeing or help-seeking",
+        "examples": []
+    },
+    "stigma": {
+        "definition": "A student describes stigma towards mental health / mental health care that they have perceived, experienced, held, or otherwise observed",
+        "examples": []
+    },
+    "social_climate": {
+        "definition": "Societal events, geopolitical conflicts/climate, government policies and legislation, or systemic inequalities and/or discrimination",
+        "examples": []
+    },
+    "covid": {
+        "definition": "Anything related to COVID, such as the societal impact and academic impact",
+        "examples": []
+    },
+    "media": {
+        "definition": "A student discusses the role of media/technology in mental health",
+        "examples": []
+    },
+    "religion_spirituality": {
+        "definition": "A student discusses spirituality/religion of their own or that of parents, peers/community",
+        "examples": [
+            "reading biblical texts, praying, attending church",
+            "community activities and traditions based on religion",
+            "ethics/morals/worldviews that are based on understanding of theology"
+        ]
+    }
+}
