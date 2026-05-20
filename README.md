@@ -1,14 +1,17 @@
 # LLM Tracker
 LLM Tracker is a Python package for identifying psychological constructs in
-qualitative text and comparing LLM-coded results against human-coded results.
+text data (e.g., interviews, social media posts, chatbot interactions) and comparing LLM-coded results against human-coded results.
 
 The package supports:
 
-- Running LLM coding on a CSV or a directory of text/CSV documents
-- Loading human-coded data from CSV, TSV, XLSX, or XLS files
-- Comparing human and LLM codings at the quote level
-- Computing precision, sensitivity, F1, PABAK, and PR AUC summary tables
+- Access to thousands of LLMs through OpenRouter API
+- Detect every instance of a construct and return the verbatim quote 
+- Comparing human and LLM codings at the quote level (using LLMs to match human and LLM quotes)
+- Computing inter-rater reliability (prevalence-adjusted) and classification metrics (sensitivity, precision, F1, and PR AUC) and returning summary tables
+- Automatically retrying submissions when LLM outputs are not parseable
 - Saving analyzer outputs, metadata, and retryable error records
+- Flexible loading of csv, txt, docx and preprocessing of dedoose human coding to match LLM coding dataframes. 
+- Many new features coming soon: visualizations, automated prompt engineering, and more!
 
 ## Installation
 
@@ -26,7 +29,7 @@ poetry install --with tutorials
 
 ## API Key
 
-LLM Tracker uses OpenRouter for LLM calls. Provide an API key directly:
+LLM Tracker uses OpenRouter for LLM calls. You can obtain an API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent. Provide an API key directly:
 
 ```python
 api_key = "your-openrouter-key"
