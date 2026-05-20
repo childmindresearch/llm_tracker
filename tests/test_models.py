@@ -1,8 +1,6 @@
 """Tests for llm_tracker.models module."""
 
 import pytest
-from pydantic import ValidationError
-
 from llm_tracker.models import (
     AnalysisResult,
     APIMetadata,
@@ -10,6 +8,7 @@ from llm_tracker.models import (
     ConstructDefinition,
     ConstructInstance,
 )
+from pydantic import ValidationError
 
 
 def test_valid_construct_with_examples() -> None:
@@ -116,7 +115,7 @@ def test_to_dict() -> None:
         ],
     )
 
-    d = result.to_dict()
+    d = result.model_dump()
 
     assert d["document_id"] == "test_doc"
     assert len(d["instances"]) == 1

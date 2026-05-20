@@ -9,14 +9,24 @@ def test_find_quote_index_is_exact_only_by_default() -> None:
     text = "I don't know what to do anymore."
     quote = "I dont know what to do anymore."
 
-    assert find_quote_index(text, quote) is None
+    quote_index = find_quote_index(text, quote)
+
+    assert quote_index is None
 
 
 def test_find_quote_index_can_use_fuzzy_matching() -> None:
     text = "I don't know what to do anymore."
     quote = "I dont know what to do anymore."
 
-    assert find_quote_index(text, quote, fuzzy=True, threshold=0.8) == "0:31"
+    quote_index = find_quote_index(text, quote, fuzzy=True, threshold=0.8)
+
+    assert quote_index == "0:31"
+
+
+def test_find_quote_index_ignores_empty_quotes() -> None:
+    quote_index = find_quote_index("Some source text.", "")
+
+    assert quote_index is None
 
 
 def test_parse_llm_response_respects_fuzzy_quote_matching_flag() -> None:
