@@ -28,7 +28,9 @@ jobs:
           cache: poetry
 
       - name: Install Poetry
-        run: pipx install poetry
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry 
 
       - name: Check Poetry configuration
         run: poetry check
