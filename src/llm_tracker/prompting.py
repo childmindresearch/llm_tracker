@@ -1,15 +1,15 @@
 """LLM prompting functionality for llm_tracker.
 
-This module handles all interactions with the OpenRouter API, including
-constructing prompts, making API requests, parsing responses, and
-handling retries.
+This module handles all interactions with LLM providers (via the any-llm
+SDK), including constructing prompts, making completion requests, parsing
+responses, and handling retries.
 """
 
 import difflib
 import json
 import time
 
-import httpx
+from any_llm import AnyLLM
 
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
@@ -196,13 +196,50 @@ def parse_llm_response(
     return AnalysisResult(document_id=document_id, instances=instances)
 
 
+def _to_dict(obj: object) -> dict | None:
+    """Best-effort conversion of an any-llm response object to a plain dict.
+
+    any-llm returns OpenAI-shaped response objects rather than raw dicts, so
+    fields stored on APIMetadata (usage, raw_response) are coerced here. Returns
+    None if the object cannot be represented as a dict.
+
+    Args:
+    ----
+        obj: The response object or sub-object to convert.
+
+    Returns:
+    -------
+        A dict representation of the object, or None.
+
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj
+    for attr in ("model_dump", "dict", "to_dict"):
+        method = getattr(obj, attr, None)
+        if callable(method):
+            try:
+                return method()
+            except Exception:  # noqa: BLE001 - best-effort serialization
+                continue
+    try:
+        return dict(obj)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return None
+
+
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
-    """Make a request to the OpenRouter API.
+    """Make a chat completion request through any-llm.
+
+    Routes the request to the configured provider (default "openrouter") using
+    the resolved API key. The request and response shape are OpenAI-compatible,
+    so response text is read from choices[0].message.content.
 
     Args:
     ----
         prompt: The complete prompt to send.
-        config: Configuration including API key and model.
+        config: Configuration including API key, provider, and model.
 
     Returns:
     -------
@@ -214,45 +251,38 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
             unexpected.
 
     """
-    headers = {
-        "Authorization": f"Bearer {config.api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/pychometrics",
-        "X-Title": "LLM Tracker",
-    }
+    messages = [{"role": "user", "content": prompt}]
 
-    payload = {
+    request_kwargs: dict = {
         "model": config.model_name,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "response_format": {"type": "json_object"},
     }
+    if config.temperature is not None:
+        request_kwargs["temperature"] = config.temperature
 
     start_time = time.time()
 
-    with httpx.Client(timeout=config.timeout) as client:
-        response = client.post(config.base_url, headers=headers, json=payload)
+    try:
+        client = AnyLLM.create(config.provider, api_key=config.api_key)
+        response = client.completion(**request_kwargs)
+    except Exception as e:  # noqa: BLE001 - normalize all provider errors
+        raise PromptingError(f"API request failed: {e}") from e
 
     latency_ms = (time.time() - start_time) * 1000
 
-    if response.status_code != 200:
-        raise PromptingError(
-            f"API request failed with status {response.status_code}: {response.text}"
-        )
-
-    response_data = response.json()
-
     try:
-        response_text = response_data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as e:
+        response_text = response.choices[0].message.content
+    except (AttributeError, IndexError, KeyError, TypeError) as e:
         raise PromptingError(f"Unexpected API response format: {e}") from e
 
     metadata = APIMetadata(
-        model=response_data.get("model"),
-        usage=response_data.get("usage"),
-        created=response_data.get("created"),
-        response_id=response_data.get("id"),
+        model=getattr(response, "model", None),
+        usage=_to_dict(getattr(response, "usage", None)),
+        created=getattr(response, "created", None),
+        response_id=getattr(response, "id", None),
         latency_ms=latency_ms,
-        raw_response=response_data,
+        raw_response=_to_dict(response),
     )
 
     return response_text, metadata

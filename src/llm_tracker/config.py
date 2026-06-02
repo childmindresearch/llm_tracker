@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 
 def _resolve_api_key(api_key_or_path: str) -> str:
-    """Resolve an OpenRouter API key from a raw key or env file path.
+    """Resolve an API key from a raw key or env file path.
 
     Args:
     ----
@@ -89,7 +89,7 @@ Your response:"""
 
 
 DEFAULT_MODEL = "google/gemini-3-flash-preview"
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_PROVIDER = "openrouter"
 MAX_RETRIES = 0
 REQUEST_TIMEOUT = 120.0
 
@@ -100,13 +100,18 @@ class AnalyzerConfig:
 
     Attributes
     ----------
-        api_key: OpenRouter API key, path to an env file, or None to read from
-            the OPENROUTER_API_KEY environment variable.
-        model_name: OpenRouter model name.
+        api_key: API key, path to an env file, or None to read from the
+            OPENROUTER_API_KEY environment variable.
+        model_name: Model identifier passed to the provider (e.g. an
+            OpenRouter model id such as "google/gemini-3-flash-preview").
+        provider: any-llm provider id used to route the request. Defaults to
+            "openrouter"; change this (and supply the matching key) to call a
+            provider natively.
         custom_prompt: Optional prompt template with text and codebook fields.
         max_retries: Number of retry attempts after the first failed request.
         timeout: Request timeout in seconds.
-        base_url: OpenRouter chat completions endpoint.
+        temperature: Sampling temperature. None lets the provider apply its own
+            default; set 0 for (best-effort) deterministic output.
         fuzzy_quote_matching: Whether to use fuzzy quote index recovery.
         quote_match_threshold: Minimum fuzzy match score for quote recovery.
 
@@ -114,10 +119,11 @@ class AnalyzerConfig:
 
     api_key: str | None = None
     model_name: str = DEFAULT_MODEL
+    provider: str = DEFAULT_PROVIDER
     custom_prompt: str | None = None
     max_retries: int = MAX_RETRIES
     timeout: float = REQUEST_TIMEOUT
-    base_url: str = OPENROUTER_BASE_URL
+    temperature: float | None = None
     fuzzy_quote_matching: bool = False
     quote_match_threshold: float = 0.85
 

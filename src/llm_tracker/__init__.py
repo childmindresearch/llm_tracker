@@ -9,6 +9,7 @@ from llm_tracker.comparison import (
 )
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.models import AnalysisResult, Codebook, ConstructInstance, ErrorRecord
+from llm_tracker import corpus_summary
 
 __version__ = "0.1.0"
 __all__ = [
