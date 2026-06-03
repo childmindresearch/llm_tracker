@@ -123,7 +123,7 @@ class AnalyzerConfig:
     custom_prompt: str | None = None
     max_retries: int = MAX_RETRIES
     timeout: float = REQUEST_TIMEOUT
-    temperature: float | None = None
+    temperature: float | None = 0.0
     fuzzy_quote_matching: bool = False
     quote_match_threshold: float = 0.85
 
