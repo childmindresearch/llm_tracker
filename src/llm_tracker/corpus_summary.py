@@ -1,5 +1,4 @@
-"""
-corpus_summary.py
+"""corpus_summary.py
 -----------------
 Generate a descriptive summary table for a corpus of text documents.
 
@@ -31,11 +30,9 @@ Optional metrics (pass flags to summarize_corpus):
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 import numpy as np
 import pandas as pd
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,8 +63,7 @@ def _fmt_mean_sd_range(values: pd.Series, decimals: int = 2) -> str:
 
 
 def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
-    """
-    For a proportion series (0-1): return 'mean% (SD%) [min%–max%]'
+    """For a proportion series (0-1): return 'mean% (SD%) [min%–max%]'
     useful for proportions derived per-document.
     """
     v = values.dropna()
@@ -89,9 +85,8 @@ def _sbert_coherence_per_doc(
     doc_text: str,
     model,
     nlp_sentences,
-) -> Optional[float]:
-    """
-    Sentence-level SBERT coherence for one document.
+) -> float | None:
+    """Sentence-level SBERT coherence for one document.
     Returns mean cosine similarity between consecutive sentence embeddings,
     or NaN if the document has fewer than 2 sentences.
     """
@@ -146,8 +141,7 @@ def summarize_corpus(
     sbert_model_name: str = "all-MiniLM-L6-v2",
     decimals: int = 2,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Compute a summary table for a list of document strings.
+    """Compute a summary table for a list of document strings.
 
     Parameters
     ----------
@@ -168,7 +162,7 @@ def summarize_corpus(
     decimals : int
         Decimal places for formatting.
 
-    Returns
+    Returns:
     -------
     tuple of (summary, raw)
         summary : pd.DataFrame with columns ['Metric', 'Value']

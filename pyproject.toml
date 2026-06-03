@@ -56,6 +56,9 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4"]
 ignore = ["D100", "D104"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D101", "D102", "D103", "D104", "D107"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

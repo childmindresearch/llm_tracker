@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.prompting import (
     PromptingError,

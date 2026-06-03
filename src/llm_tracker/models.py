@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ConstructDefinition(BaseModel):
     """Definition of a psychological construct in the codebook.
 
-    Attributes
+    Attributes:
     ----------
         name: The name of the psychological construct.
         definition: A clear definition explaining the construct.
@@ -24,7 +24,7 @@ class ConstructDefinition(BaseModel):
 class Codebook(BaseModel):
     """A codebook containing psychological construct definitions.
 
-    Attributes
+    Attributes:
     ----------
         constructs: List of construct definitions to identify in text.
 
@@ -38,7 +38,7 @@ class Codebook(BaseModel):
 class ConstructInstance(BaseModel):
     """An instance of a psychological construct found in text.
 
-    Attributes
+    Attributes:
     ----------
         construct: Name of the construct identified.
         speaker_id: Speaker identifier if available.
@@ -70,7 +70,7 @@ class ConstructInstance(BaseModel):
 class AnalysisResult(BaseModel):
     """Result of analyzing a single document for psychological constructs.
 
-    Attributes
+    Attributes:
     ----------
         document_id: Identifier for the document (from filename).
         instances: List of construct instances found in the document.
@@ -86,7 +86,7 @@ class AnalysisResult(BaseModel):
 class APIMetadata(BaseModel):
     """Metadata from the LLM API response.
 
-    Attributes
+    Attributes:
     ----------
         model: The model used for the request.
         usage: Token usage information.
@@ -112,7 +112,7 @@ class APIMetadata(BaseModel):
 class ErrorRecord(BaseModel):
     """Record of a failed document processing attempt.
 
-    Attributes
+    Attributes:
     ----------
         document_id: Identifier for the document.
         document_path: Path to the original document.

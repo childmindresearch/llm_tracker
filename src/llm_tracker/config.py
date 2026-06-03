@@ -98,7 +98,7 @@ REQUEST_TIMEOUT = 120.0
 class AnalyzerConfig:
     """Configuration for analyzer and matcher LLM requests.
 
-    Attributes
+    Attributes:
     ----------
         api_key: API key, path to an env file, or None to read from the
             OPENROUTER_API_KEY environment variable.
@@ -134,11 +134,11 @@ class AnalyzerConfig:
     def _load_api_key(self) -> str:
         """Load the API key from config, env file, or environment variable.
 
-        Returns
+        Returns:
         -------
             Resolved API key string.
 
-        Raises
+        Raises:
         ------
             ValueError: If no API key is provided or available from the
                 environment.
@@ -155,7 +155,7 @@ class AnalyzerConfig:
     def prompt_template(self) -> str:
         """Return the custom prompt template or the default prompt.
 
-        Returns
+        Returns:
         -------
             Prompt template used for document coding.
 

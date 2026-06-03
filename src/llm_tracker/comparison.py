@@ -789,7 +789,7 @@ def _weighted_median(values: list[float], weights: list[float]) -> float:
         Weighted median of the input values.
 
     """
-    value_weight_pairs = sorted(zip(values, weights), key=lambda item: item[0])
+    value_weight_pairs = sorted(zip(values, weights, strict=False), key=lambda item: item[0])
     halfway_weight = sum(weights) / 2
     cumulative_weight = 0.0
 
