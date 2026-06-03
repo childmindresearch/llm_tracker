@@ -48,7 +48,7 @@ class ConstructInstance(BaseModel):
 
     """
 
-    construct: str = Field(..., description="Name of the identified construct")
+    construct: str = Field(..., description="Name of the identified construct")  # type: ignore[assignment]
     speaker_id: str | None = Field(
         default=None, description="Speaker identifier if available"
     )

@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -49,7 +50,8 @@ def load_codebook(codebook_path: Path | str) -> dict:
         raise FileLoadError(f"Codebook must be a JSON file, got: {path.suffix}")
 
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict = json.loads(path.read_text(encoding="utf-8"))
+        return data
     except json.JSONDecodeError as e:
         raise FileLoadError(f"Invalid JSON in codebook: {e}") from e
     except OSError as e:

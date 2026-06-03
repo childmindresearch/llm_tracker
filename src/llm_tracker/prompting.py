@@ -220,9 +220,10 @@ def _to_dict(obj: object) -> dict | None:
         method = getattr(obj, attr, None)
         if callable(method):
             try:
-                return method()
+                result = method()
             except Exception:  # noqa: BLE001 - best-effort serialization
                 continue
+            return result if isinstance(result, dict) else None
     try:
         return dict(obj)  # type: ignore[call-overload]
     except (TypeError, ValueError):

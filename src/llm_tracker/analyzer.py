@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -139,7 +140,7 @@ class LLMTrackerAnalyzer:
             self.config = config
             return
 
-        config_kwargs = {
+        config_kwargs: dict[str, Any] = {
             "api_key": api_key,
             "fuzzy_quote_matching": fuzzy_quote_matching,
             "quote_match_threshold": quote_match_threshold,

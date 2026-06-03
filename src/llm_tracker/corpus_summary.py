@@ -28,6 +28,7 @@ Optional metrics (pass flags to summarize_corpus):
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -83,8 +84,8 @@ def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
 
 def _sbert_coherence_per_doc(
     doc_text: str,
-    model,
-    nlp_sentences,
+    model: Any,
+    nlp_sentences: Any,
 ) -> float | None:
     """Compute sentence-level SBERT coherence for one document.
 
@@ -109,14 +110,14 @@ def _sbert_coherence_per_doc(
 # ---------------------------------------------------------------------------
 
 
-def _tree_depth(token) -> int:
+def _tree_depth(token: Any) -> int:
     """Recursive depth of a dependency parse subtree."""
     if not list(token.children):
         return 0
     return 1 + max(_tree_depth(c) for c in token.children)
 
 
-def _mean_tree_depth(spacy_doc) -> float:
+def _mean_tree_depth(spacy_doc: Any) -> float:
     """Mean parse-tree depth across sentences."""
     depths = []
     for sent in spacy_doc.sents:
@@ -244,7 +245,7 @@ def summarize_corpus(
     # ------------------------------------------------------------------ #
     rows = []
 
-    def add(metric_name, value_str):
+    def add(metric_name: str, value_str: str) -> None:
         rows.append({"Metric": metric_name, "Value": value_str})
 
     # --- Sample size ---
