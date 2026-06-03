@@ -65,5 +65,6 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
+
 [tool.deptry.per_rule_ignores]
-DEP004 = ["spacy", "textdescriptives"]
+DEP004 = ["spacy", "textdescriptives", "sentence_transformers"]
