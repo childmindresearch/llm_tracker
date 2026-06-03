@@ -381,6 +381,15 @@ class LLMTrackerComparer:
         match_model: str | None = None,
         config: AnalyzerConfig | None = None,
     ) -> None:
+        """Create a comparer.
+
+        Args:
+        ----
+            api_key: API key or path to an env file containing it.
+            match_model: Model name for the matcher. Ignored if config is given.
+            config: Optional AnalyzerConfig. When provided, other args are ignored.
+
+        """
         if config is not None:
             self.config = config
         elif match_model is not None:

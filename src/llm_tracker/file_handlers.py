@@ -573,7 +573,7 @@ def load_human_coding(
     construct_col: str = "Codes Applied Combined",
     range_format: str = "dash",
     construct_separator: str = ",",
-    **read_kwargs,
+    **read_kwargs: Any,
 ) -> dict[str, AnalysisResult]:
     """Load human coded data from a CSV, TSV, XLSX, or XLS file.
 
