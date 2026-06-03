@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.15"
+python = ">=3.11,<3.14"
 any-llm-sdk = {version = ">=0.1.0", extras = ["openrouter"]}
 pydantic = "^2.0"
 python-dotenv = "^1.0.0"
