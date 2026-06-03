@@ -35,8 +35,6 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import spacy
-import textdescriptives as td
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +174,16 @@ def summarize_corpus(
         summary : pd.DataFrame with columns ['Metric', 'Value']
         raw     : pd.DataFrame with per-document metrics
     """
+    try:
+        import spacy
+        import textdescriptives as td
+    except ImportError as e:
+        raise ImportError(
+            "summarize_corpus requires the optional 'tutorials' dependencies "
+            "(spacy, textdescriptives). Install them with: "
+            "poetry install --with tutorials"
+        ) from e
+
     # ------------------------------------------------------------------ #
     # 1.  TextDescriptives extraction
     # ------------------------------------------------------------------ #
