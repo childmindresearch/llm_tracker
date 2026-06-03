@@ -152,7 +152,9 @@ def test_call_llm_api_omits_temperature_when_none(
         "llm_tracker.prompting.AnyLLM.create",
         lambda provider, api_key=None: fake_client,
     )
-    config = AnalyzerConfig(api_key="test-key")  # temperature defaults to None
+    config = AnalyzerConfig(
+        api_key="test-key", temperature=None
+    )  # temperature defaults to None
 
     call_llm_api("hello", config)
 
