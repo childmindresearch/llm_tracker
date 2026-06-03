@@ -225,7 +225,8 @@ def _to_dict(obj: object) -> dict | None:
                 continue
             return result if isinstance(result, dict) else None
     try:
-        return dict(obj)  # type: ignore[call-overload]
+        result_dict: dict = dict(obj)  # type: ignore[call-overload]
+        return result_dict
     except (TypeError, ValueError):
         return None
 

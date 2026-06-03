@@ -700,7 +700,10 @@ def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
     if counts.empty:
         return pd.DataFrame(columns=["tp", "fp", "fn", "union", *METRICS])
     return pd.DataFrame(
-        [_metrics(row.tp, row.fp, row.fn) for row in counts.itertuples()]
+        [
+            _metrics(row.tp, row.fp, row.fn)  # type: ignore[arg-type]
+            for row in counts.itertuples()
+        ]
     )
 
 
@@ -742,7 +745,7 @@ def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
 
     results = {"Overall": score_group(predictions)}
     for construct, group in predictions.groupby("construct"):
-        results[construct] = score_group(group)
+        results[construct] = score_group(group)  # type: ignore[index]
 
     return results
 
@@ -917,7 +920,7 @@ def compute_summary_tables(
     total_docs = df["doc_id"].nunique()
     construct_names = df["construct"].unique().tolist()
     concatenated_stats = [
-        _doc_stats(row.construct, per_doc, total_docs, construct_names)
+        _doc_stats(str(row.construct), per_doc, total_docs, construct_names)
         for row in concatenated.itertuples()
     ]
     concatenated = pd.concat([concatenated, pd.DataFrame(concatenated_stats)], axis=1)
@@ -931,12 +934,12 @@ def compute_summary_tables(
             (df["doc_id"] == row.doc_id) & (df["construct"] == row.construct)
         ]
         scores = compute_pr_auc(rows_for_doc_construct)
-        per_doc_pr_auc.append(scores.get(row.construct))
+        per_doc_pr_auc.append(scores.get(row.construct))  # type: ignore[arg-type]
     per_doc["pr_auc"] = per_doc_pr_auc
 
     weighted = _weighted_summary(per_doc)
     weighted_stats = [
-        _doc_stats(row.construct, per_doc, total_docs, construct_names)
+        _doc_stats(str(row.construct), per_doc, total_docs, construct_names)
         for row in weighted.itertuples()
     ]
     weighted = pd.concat([weighted, pd.DataFrame(weighted_stats)], axis=1)
