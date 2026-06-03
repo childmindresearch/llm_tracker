@@ -1,6 +1,4 @@
-"""corpus_summary.py
------------------
-Generate a descriptive summary table for a corpus of text documents.
+"""Generate a descriptive summary table for a corpus of text documents.
 
 Core metrics (always computed via TextDescriptives + custom logic):
   - N documents
@@ -34,6 +32,7 @@ import re
 import numpy as np
 import pandas as pd
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -63,8 +62,9 @@ def _fmt_mean_sd_range(values: pd.Series, decimals: int = 2) -> str:
 
 
 def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
-    """For a proportion series (0-1): return 'mean% (SD%) [min%–max%]'
-    useful for proportions derived per-document.
+    """Return 'mean% (SD%) [min%-max%]' for a proportion series (0-1).
+
+    Useful for proportions derived per-document.
     """
     v = values.dropna()
     if v.empty:
@@ -86,7 +86,8 @@ def _sbert_coherence_per_doc(
     model,
     nlp_sentences,
 ) -> float | None:
-    """Sentence-level SBERT coherence for one document.
+    """Compute sentence-level SBERT coherence for one document.
+
     Returns mean cosine similarity between consecutive sentence embeddings,
     or NaN if the document has fewer than 2 sentences.
     """
@@ -215,11 +216,11 @@ def summarize_corpus(
     if include_coherence_sbert:
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "sentence-transformers is required for SBERT coherence.\n"
                 "Install with: pip install sentence-transformers"
-            )
+            ) from err
         print(f"Loading SBERT model '{sbert_model_name}'…")
         sbert = SentenceTransformer(sbert_model_name)
         # lightweight spaCy for sentence splitting only
@@ -388,19 +389,22 @@ if __name__ == "__main__":
             "The facilitators were excellent, and the exercises were practical."
         ),
         (
-            "The patient presented with elevated cortisol and disrupted sleep architecture. "
-            "We recommended a structured CBT protocol. Follow-up is scheduled for six weeks. "
-            "She expressed ambivalence about medication but agreed to try the intervention."
+            "The patient presented with elevated cortisol and disrupted "
+            "sleep architecture. We recommended a structured CBT protocol. "
+            "Follow-up is scheduled for six weeks. She expressed ambivalence "
+            "about medication but agreed to try the intervention."
         ),
         (
-            "It's hard to explain. Everything feels heavy. I don't know where to begin. "
+            "It's hard to explain. Everything feels heavy. "
+            "I don't know where to begin. "
             "Maybe things will get better. I keep telling myself that."
         ),
     ]
 
     summary, raw = summarize_corpus(
         sample_texts,
-        spacy_model="en_core_web_sm",  # change to lg for better dep-distance
+        # change to en_core_web_lg for better dependency-distance
+        spacy_model="en_core_web_sm",
         include_coherence_sbert=True,
         include_readability=True,
         include_sentence_complexity=True,

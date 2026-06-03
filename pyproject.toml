@@ -56,9 +56,6 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4"]
 ignore = ["D100", "D104"]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D100", "D101", "D102", "D103", "D104", "D107"]
-
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -68,6 +65,8 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
-
 [tool.deptry.per_rule_ignores]
 DEP004 = ["spacy", "textdescriptives", "sentence_transformers"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D101", "D102", "D103", "D104", "D107"]
