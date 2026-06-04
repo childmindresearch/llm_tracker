@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "llm-tracker"
-version = "0.1.0"
+version = "v0.1.0-beta.1"
 description = "A Python package for identifying psychological constructs in text using LLM analysis"
 authors = ["LLM Tracker Team"]
 readme = "README.md"
