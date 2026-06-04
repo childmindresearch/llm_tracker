@@ -5,9 +5,9 @@ text data (e.g., interviews, social media posts, chatbot interactions) and compa
 The package supports:
 
 - Access to thousands of LLMs through OpenRouter API
-- Detect every instance of a construct and return the verbatim quote 
+- Detect every instance of a construct (e.g., anxiety) and return the verbatim quote (e.g., "I'm worried about my cousin")
 - Comparing human and LLM codings at the quote level (using LLMs to match human and LLM quotes)
-- Computing inter-rater reliability (prevalence-adjusted) and classification metrics (sensitivity, precision, F1, and PR AUC) and returning summary tables
+- Computing inter-rater reliability metrics (Kappa, ICC, PABAK) and classification metrics (sensitivity, precision, F1, and PR AUC) and returning summary tables
 - Automatically retrying submissions when LLM outputs are not parseable
 - Saving analyzer outputs, metadata, and retryable error records
 - Flexible loading of csv, txt, docx and preprocessing of dedoose human coding to match LLM coding dataframes. 
@@ -29,7 +29,7 @@ poetry install --with tutorials
 
 ## API Key
 
-LLM Tracker uses OpenRouter for LLM calls. You can obtain an API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent. Provide an API key directly:
+LLM Tracker uses OpenRouter for LLM calls. You can obtain an API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent (see cost for specific models on OpenRouter). Provide an API key directly:
 
 ```python
 api_key = "your-openrouter-key"
@@ -160,6 +160,7 @@ recovered_results, recovered_metadata, remaining_errors = analyzer.retry_errors(
 
 See [tutorial.ipynb](tutorial.ipynb) for a fuller walkthrough using the
 sample data and codebook.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorial.ipynb)
 
 ## Testing
 
