@@ -13,6 +13,11 @@ The package supports:
 - Flexible loading of csv, txt, docx and preprocessing of dedoose human coding to match LLM coding dataframes. 
 - Many new features coming soon: visualizations, automated prompt engineering, and more!
 
+**Please cite this if you use this package:**
+
+Low, D., Mair, P., Nock, M., & Ghosh, S. (2025). Text Psychometrics: Assessing Psychological Constructs in Text Using Natural Language Processing. PsyArxiv. https://osf.io/preprints/psyarxiv/9rdux_v4
+
+
 ## Installation
 
 Install dependencies with Poetry:
