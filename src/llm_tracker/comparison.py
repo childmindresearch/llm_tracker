@@ -1,5 +1,6 @@
 """Compare human and LLM construct codings."""
 
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
@@ -1052,3 +1053,113 @@ def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
         _format_doc_stats, axis=1
     )
     return display
+
+
+def refine_codebook(
+    comparison_df: pd.DataFrame,
+    concatenated_summary: pd.DataFrame,
+    codebook: dict,
+    output_path: Path | str,
+    pabak_threshold: float = 0.8,  # make this arbitrary threshold 'metric_threshold' , default pabak
+) -> dict:
+    """Enrich a codebook using disagreements on poorly performing constructs.
+
+    For every construct whose PABAK (from the concatenated summary table) is
+    below ``pabak_threshold``, this collects the quotes from that construct's
+    disagreements and folds them back into the codebook:
+
+    - False negatives (human coded it, the LLM missed it) are added to the
+      construct's ``examples`` -- they are true instances the LLM should learn
+      to catch.
+    - False positives (the LLM coded it with no human match) are added to the
+      construct's ``counter_examples`` -- they are passages the LLM should learn
+      to reject. The ``counter_examples`` key is created if it does not exist.
+
+    Constructs at or above the threshold, constructs with an undefined (None)
+    PABAK, and the summary's ``Overall`` row are left unchanged. The input
+    codebook is not mutated; a deep copy is returned and written to JSON.
+
+    Args:
+    ----
+        comparison_df: Row-level comparison table from compare_results, with
+            ``construct``, ``status``, ``human_quote``, and ``llm_quote`` columns.
+        concatenated_summary: Concatenated summary table from
+            compute_summary_tables, with ``construct`` and ``pabak`` columns.
+        codebook: Codebook dict mapping construct name to a dict with at least a
+            ``definition`` and an ``examples`` list.
+        output_path: Path to write the refined codebook JSON to.
+        pabak_threshold: Constructs with PABAK strictly below this value are
+            refined. Defaults to 0.8.
+
+    Returns:
+    -------
+        The refined codebook as a new dict (also written to ``output_path``).
+    """
+    refined = copy.deepcopy(codebook)
+
+    summary = concatenated_summary[concatenated_summary["construct"] != "Overall"]
+    underperforming = {
+        str(row.construct)
+        for row in summary.itertuples()
+        if row.pabak is not None
+        and not pd.isna(row.pabak)
+        and float(row.pabak) < pabak_threshold
+    }
+
+    if not underperforming:
+        _write_codebook(refined, output_path)
+        return refined
+
+    for construct in underperforming:
+        if construct not in refined:
+            print(
+                f"Skipping '{construct}': below PABAK threshold but not present "
+                f"in the codebook."
+            )
+            continue
+
+        entry = refined[construct]
+        construct_rows = comparison_df[comparison_df["construct"] == construct]
+
+        fn_quotes = [
+            str(q).strip()
+            for q in construct_rows.loc[
+                construct_rows["status"] == "human_only", "human_quote"
+            ]
+            if isinstance(q, str) and q.strip()
+        ]
+
+        fp_quotes = [
+            str(q).strip()
+            for q in construct_rows.loc[
+                construct_rows["status"] == "llm_only", "llm_quote"
+            ]
+            if isinstance(q, str) and q.strip()
+        ]
+
+        if fn_quotes:
+            entry.setdefault("examples", [])
+            _extend_unique(entry["examples"], fn_quotes)
+        if fp_quotes:
+            entry.setdefault("counter_examples", [])
+            _extend_unique(entry["counter_examples"], fp_quotes)
+
+    _write_codebook(refined, output_path)
+    return refined
+
+
+def _extend_unique(target: list, new_items: list[str]) -> None:
+    """Append items not already present, preserving order and de-duplicating."""
+    seen = set(target)
+    for item in new_items:
+        if item not in seen:
+            target.append(item)
+            seen.add(item)
+
+
+def _write_codebook(codebook: dict, output_path: Path | str) -> None:
+    """Write a codebook dict to JSON."""
+    Path(output_path).write_text(
+        json.dumps(codebook, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
