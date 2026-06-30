@@ -57,29 +57,28 @@ def _fmt_mean_sd(values: pd.Series, decimals: int = 2) -> str:
 
 
 def _fmt_mean_sd_range(values: pd.Series, decimals: int = 2) -> str:
-    """Return 'mean X (SD Y) [min A – max B]' string with inline labels."""
+    """Return 'mean (SD) [min–max]' string."""
     v = values.dropna()
     if v.empty:
         return "N/A"
     return (
-        f"mean {v.mean():.{decimals}f} (SD {v.std():.{decimals}f}) "
-        f"[min {v.min():.{decimals}f} – max {v.max():.{decimals}f}]"
+        f"{v.mean():.{decimals}f} ({v.std():.{decimals}f}) "
+        f"[{v.min():.{decimals}f}–{v.max():.{decimals}f}]"
     )
 
 
 def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
-    """Return 'mean X% (SD Y%) [min A% – max B%]' for a proportion series (0-1).
-
-    Inline labels make each statistic explicit. Useful for proportions derived
-    per-document.
+    """
+    For a proportion series (0-1): return 'mean% (SD%) [min%–max%]'
+    useful for proportions derived per-document.
     """
     v = values.dropna()
     if v.empty:
         return "N/A"
     pct = v * 100
     return (
-        f"mean {pct.mean():.{decimals}f}% (SD {pct.std():.{decimals}f}%) "
-        f"[min {pct.min():.{decimals}f}% – max {pct.max():.{decimals}f}%]"
+        f"{pct.mean():.{decimals}f}% ({pct.std():.{decimals}f}%) "
+        f"[{pct.min():.{decimals}f}%–{pct.max():.{decimals}f}%]"
     )
 
 
@@ -367,8 +366,9 @@ def summarize_corpus(
 def print_summary(summary: pd.DataFrame) -> None:
     """Pretty-print the summary table."""
     col_w = max(summary["Metric"].str.len().max() + 2, 45)
+    header = "mean (SD) [min–max]"
     print("\n" + "=" * (col_w + 42))
-    print(f"{'Metric':<{col_w}}{'Value'}")
+    print(f"{'Metric':<{col_w}}{header}")
     print("=" * (col_w + 42))
     for _, row in summary.iterrows():
         print(f"{row['Metric']:<{col_w}}{row['Value']}")
