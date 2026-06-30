@@ -1,4 +1,7 @@
-"""Generate a descriptive summary table for a corpus of text documents.
+"""
+corpus_summary.py
+-----------------
+Generate a descriptive summary table for a corpus of text documents.
 
 Core metrics (always computed via TextDescriptives + custom logic):
   - N documents
@@ -28,10 +31,13 @@ Optional metrics (pass flags to summarize_corpus):
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Optional
 
 import numpy as np
 import pandas as pd
+import spacy
+import textdescriptives as td
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,28 +57,29 @@ def _fmt_mean_sd(values: pd.Series, decimals: int = 2) -> str:
 
 
 def _fmt_mean_sd_range(values: pd.Series, decimals: int = 2) -> str:
-    """Return 'mean (SD) [min–max]' string."""
+    """Return 'mean X (SD Y) [min A – max B]' string with inline labels."""
     v = values.dropna()
     if v.empty:
         return "N/A"
     return (
-        f"{v.mean():.{decimals}f} ({v.std():.{decimals}f}) "
-        f"[{v.min():.{decimals}f}–{v.max():.{decimals}f}]"
+        f"mean {v.mean():.{decimals}f} (SD {v.std():.{decimals}f}) "
+        f"[min {v.min():.{decimals}f} – max {v.max():.{decimals}f}]"
     )
 
 
 def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
-    """Return 'mean% (SD%) [min%-max%]' for a proportion series (0-1).
+    """Return 'mean X% (SD Y%) [min A% – max B%]' for a proportion series (0-1).
 
-    Useful for proportions derived per-document.
+    Inline labels make each statistic explicit. Useful for proportions derived
+    per-document.
     """
     v = values.dropna()
     if v.empty:
         return "N/A"
     pct = v * 100
     return (
-        f"{pct.mean():.{decimals}f}% ({pct.std():.{decimals}f}%) "
-        f"[{pct.min():.{decimals}f}%–{pct.max():.{decimals}f}%]"
+        f"mean {pct.mean():.{decimals}f}% (SD {pct.std():.{decimals}f}%) "
+        f"[min {pct.min():.{decimals}f}% – max {pct.max():.{decimals}f}%]"
     )
 
 
@@ -83,11 +90,11 @@ def _fmt_pct_n(values: pd.Series, decimals: int = 1) -> str:
 
 def _sbert_coherence_per_doc(
     doc_text: str,
-    model: Any,
-    nlp_sentences: Any,
-) -> float | None:
-    """Compute sentence-level SBERT coherence for one document.
-
+    model,
+    nlp_sentences,
+) -> Optional[float]:
+    """
+    Sentence-level SBERT coherence for one document.
     Returns mean cosine similarity between consecutive sentence embeddings,
     or NaN if the document has fewer than 2 sentences.
     """
@@ -109,14 +116,14 @@ def _sbert_coherence_per_doc(
 # ---------------------------------------------------------------------------
 
 
-def _tree_depth(token: Any) -> int:
+def _tree_depth(token) -> int:
     """Recursive depth of a dependency parse subtree."""
     if not list(token.children):
         return 0
     return 1 + max(_tree_depth(c) for c in token.children)
 
 
-def _mean_tree_depth(spacy_doc: Any) -> float:
+def _mean_tree_depth(spacy_doc) -> float:
     """Mean parse-tree depth across sentences."""
     depths = []
     for sent in spacy_doc.sents:
@@ -142,7 +149,8 @@ def summarize_corpus(
     sbert_model_name: str = "all-MiniLM-L6-v2",
     decimals: int = 2,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Compute a summary table for a list of document strings.
+    """
+    Compute a summary table for a list of document strings.
 
     Parameters
     ----------
@@ -163,22 +171,12 @@ def summarize_corpus(
     decimals : int
         Decimal places for formatting.
 
-    Returns:
+    Returns
     -------
     tuple of (summary, raw)
         summary : pd.DataFrame with columns ['Metric', 'Value']
         raw     : pd.DataFrame with per-document metrics
     """
-    try:
-        import spacy
-        import textdescriptives as td
-    except ImportError as e:
-        raise ImportError(
-            "summarize_corpus requires the optional 'tutorials' dependencies "
-            "(spacy, textdescriptives). Install them with: "
-            "poetry install --with tutorials"
-        ) from e
-
     # ------------------------------------------------------------------ #
     # 1.  TextDescriptives extraction
     # ------------------------------------------------------------------ #
@@ -216,11 +214,11 @@ def summarize_corpus(
     if include_coherence_sbert:
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError as err:
+        except ImportError:
             raise ImportError(
                 "sentence-transformers is required for SBERT coherence.\n"
                 "Install with: pip install sentence-transformers"
-            ) from err
+            )
         print(f"Loading SBERT model '{sbert_model_name}'…")
         sbert = SentenceTransformer(sbert_model_name)
         # lightweight spaCy for sentence splitting only
@@ -244,7 +242,7 @@ def summarize_corpus(
     # ------------------------------------------------------------------ #
     rows = []
 
-    def add(metric_name: str, value_str: str) -> None:
+    def add(metric_name, value_str):
         rows.append({"Metric": metric_name, "Value": value_str})
 
     # --- Sample size ---
@@ -389,22 +387,19 @@ if __name__ == "__main__":
             "The facilitators were excellent, and the exercises were practical."
         ),
         (
-            "The patient presented with elevated cortisol and disrupted "
-            "sleep architecture. We recommended a structured CBT protocol. "
-            "Follow-up is scheduled for six weeks. She expressed ambivalence "
-            "about medication but agreed to try the intervention."
+            "The patient presented with elevated cortisol and disrupted sleep architecture. "
+            "We recommended a structured CBT protocol. Follow-up is scheduled for six weeks. "
+            "She expressed ambivalence about medication but agreed to try the intervention."
         ),
         (
-            "It's hard to explain. Everything feels heavy. "
-            "I don't know where to begin. "
+            "It's hard to explain. Everything feels heavy. I don't know where to begin. "
             "Maybe things will get better. I keep telling myself that."
         ),
     ]
 
     summary, raw = summarize_corpus(
         sample_texts,
-        # change to en_core_web_lg for better dependency-distance
-        spacy_model="en_core_web_sm",
+        spacy_model="en_core_web_sm",  # change to lg for better dep-distance
         include_coherence_sbert=True,
         include_readability=True,
         include_sentence_complexity=True,
