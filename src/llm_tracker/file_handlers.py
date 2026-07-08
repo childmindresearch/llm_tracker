@@ -5,7 +5,6 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -25,8 +24,67 @@ class FileLoadError(Exception):
     """Exception raised when a file cannot be loaded."""
 
 
+DEFAULT_CODEBOOK_METADATA = {
+    "name": "",
+    "version": 1,
+    "citation": "",
+    "built_from": [],
+}
+
+
+def ensure_codebook_envelope(data: dict) -> dict:
+    """Return a codebook in envelope form, wrapping a flat codebook if needed.
+
+    A dict that already has both ``metadata`` and ``codebook`` keys is returned
+    as-is. Anything else is treated as a flat ``{construct: entry}`` mapping and
+    wrapped with default metadata.
+
+    Args:
+    ----
+        data: A codebook envelope or a flat construct mapping.
+
+    Returns:
+    -------
+        The codebook in envelope form.
+
+    """
+    if isinstance(data, dict) and "codebook" in data and "metadata" in data:
+        return data
+    return {"metadata": dict(DEFAULT_CODEBOOK_METADATA), "codebook": data}
+
+
+def codebook_constructs(codebook: dict) -> dict:
+    """Extract the inner ``{construct: entry}`` mapping from an envelope.
+
+    Accepts either an enveloped codebook or a bare flat mapping, so callers can
+    stay agnostic about which form they were handed.
+
+    Args:
+    ----
+        codebook: A codebook envelope or a flat construct mapping.
+
+    Returns:
+    -------
+        The inner construct mapping.
+
+    """
+    if isinstance(codebook, dict) and "codebook" in codebook and "metadata" in codebook:
+        inner: dict = codebook["codebook"]
+        return inner
+    return codebook
+
+
 def load_codebook(codebook_path: Path | str) -> dict:
-    """Load a codebook JSON file.
+    """Load a codebook JSON file, returning the full metadata envelope.
+
+    Codebooks use the structure::
+
+        {"metadata": {"name", "version", "citation", "built_from"},
+         "codebook": {construct_name: {...}, ...}}
+
+    Older "flat" codebooks (a bare ``{construct_name: {...}}`` mapping with no
+    ``metadata`` / ``codebook`` keys) are auto-wrapped with default metadata so
+    they keep loading.
 
     Args:
     ----
@@ -34,7 +92,7 @@ def load_codebook(codebook_path: Path | str) -> dict:
 
     Returns:
     -------
-        Parsed codebook dictionary.
+        The codebook envelope: ``{"metadata": {...}, "codebook": {...}}``.
 
     Raises:
     ------
@@ -51,11 +109,12 @@ def load_codebook(codebook_path: Path | str) -> dict:
 
     try:
         data: dict = json.loads(path.read_text(encoding="utf-8"))
-        return data
     except json.JSONDecodeError as e:
         raise FileLoadError(f"Invalid JSON in codebook: {e}") from e
     except OSError as e:
         raise FileLoadError(f"Could not read codebook file: {e}") from e
+
+    return ensure_codebook_envelope(data)
 
 
 def load_txt_document(file_path: Path) -> str:
@@ -573,7 +632,7 @@ def load_human_coding(
     construct_col: str = "Codes Applied Combined",
     range_format: str = "dash",
     construct_separator: str = ",",
-    **read_kwargs: Any,
+    **read_kwargs,
 ) -> dict[str, AnalysisResult]:
     """Load human coded data from a CSV, TSV, XLSX, or XLS file.
 

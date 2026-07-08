@@ -2,13 +2,14 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
+from llm_tracker import file_handlers
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import (
     FileLoadError,
+    codebook_constructs,
     create_output_directory,
     get_document_files,
     load_codebook,
@@ -140,7 +141,7 @@ class LLMTrackerAnalyzer:
             self.config = config
             return
 
-        config_kwargs: dict[str, Any] = {
+        config_kwargs = {
             "api_key": api_key,
             "fuzzy_quote_matching": fuzzy_quote_matching,
             "quote_match_threshold": quote_match_threshold,
@@ -207,7 +208,7 @@ class LLMTrackerAnalyzer:
         """
         input_path = Path(input_dir)
         codebook_file = Path(codebook_path)
-        codebook = load_codebook(codebook_file)
+        codebook = codebook_constructs(load_codebook(codebook_file))
         document_paths = get_document_files(input_path)
         output_path = create_output_directory(
             output_name=output_dir, base_dir=Path.cwd()
@@ -302,7 +303,7 @@ class LLMTrackerAnalyzer:
         """
         csv_file = Path(csv_path)
         codebook_file = Path(codebook_path)
-        codebook = load_codebook(codebook_file)
+        codebook = codebook_constructs(load_codebook(codebook_file))
         output_path = create_output_directory(
             output_name=output_dir, base_dir=Path.cwd()
         )
@@ -412,7 +413,7 @@ class LLMTrackerAnalyzer:
 
         """
         output_path = Path(output_dir)
-        codebook = load_codebook(codebook_path)
+        codebook = codebook_constructs(load_codebook(codebook_path))
         failed_records = load_error_records(output_path)
 
         if not failed_records:
