@@ -4,7 +4,7 @@ import copy
 import json
 from datetime import datetime
 from pathlib import Path
-
+import copy
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
@@ -1055,48 +1055,51 @@ def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
     return display
 
 
+"""Codebook optimization functions.
+
+Append these to comparison.py. Requires `import copy` at the top of the file
+(alongside the existing `import json`); everything else (json, Path, datetime,
+AnalysisResult, LLMTrackerComparer, compute_summary_tables) is already in scope
+there.
+"""
+
+
 def refine_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
     codebook: dict,
-    output_path: Path | str,
-    pabak_threshold: float = 0.8,  # make this arbitrary threshold 'metric_threshold' , default pabak
+    pabak_threshold: float = 0.8,
 ) -> dict:
-    """Enrich a codebook using disagreements on poorly performing constructs.
+    """Build a partial codebook of just the constructs that need improvement.
 
-    For every construct whose PABAK (from the concatenated summary table) is
-    below ``pabak_threshold``, this collects the quotes from that construct's
-    disagreements and folds them back into the codebook:
+    For every construct whose PABAK (from the concatenated summary) is strictly
+    below ``pabak_threshold``, the construct's disagreements are folded into a
+    copy of its codebook entry:
 
-    - False negatives (human coded it, the LLM missed it) are added to the
-      construct's ``examples`` -- they are true instances the LLM should learn
-      to catch.
-    - False positives (the LLM coded it with no human match) are added to the
-      construct's ``counter_examples`` -- they are passages the LLM should learn
-      to reject. The ``counter_examples`` key is created if it does not exist.
+    - False negatives (human coded it, the LLM missed it) are appended to
+      ``examples`` -- true instances the LLM should learn to catch.
+    - False positives (the LLM coded it with no human match) are appended to
+      ``counter_examples`` -- passages the LLM should learn to reject. The
+      ``counter_examples`` key is created if absent.
 
-    Constructs at or above the threshold, constructs with an undefined (None)
-    PABAK, and the summary's ``Overall`` row are left unchanged. The input
-    codebook is not mutated; a deep copy is returned and written to JSON.
+    Only the changed constructs are returned (a "partial" codebook), each as a
+    complete, self-contained entry. Constructs at or above the threshold, those
+    with an undefined (None) PABAK, the ``Overall`` row, and constructs not found
+    in the codebook are excluded. The input codebook is not mutated.
 
     Args:
     ----
-        comparison_df: Row-level comparison table from compare_results, with
-            ``construct``, ``status``, ``human_quote``, and ``llm_quote`` columns.
-        concatenated_summary: Concatenated summary table from
-            compute_summary_tables, with ``construct`` and ``pabak`` columns.
-        codebook: Codebook dict mapping construct name to a dict with at least a
-            ``definition`` and an ``examples`` list.
-        output_path: Path to write the refined codebook JSON to.
-        pabak_threshold: Constructs with PABAK strictly below this value are
-            refined. Defaults to 0.8.
+        comparison_df: Row-level comparison table from compare_results.
+        concatenated_summary: Concatenated summary from compute_summary_tables,
+            with ``construct`` and ``pabak`` columns.
+        codebook: Codebook dict mapping construct name to an entry with at least
+            a ``definition`` and (optionally) ``examples`` / ``counter_examples``.
+        pabak_threshold: Constructs with PABAK strictly below this are refined.
 
     Returns:
     -------
-        The refined codebook as a new dict (also written to ``output_path``).
+        A partial codebook containing only the changed constructs.
     """
-    refined = copy.deepcopy(codebook)
-
     summary = concatenated_summary[concatenated_summary["construct"] != "Overall"]
     underperforming = {
         str(row.construct)
@@ -1106,19 +1109,16 @@ def refine_codebook(
         and float(row.pabak) < pabak_threshold
     }
 
-    if not underperforming:
-        _write_codebook(refined, output_path)
-        return refined
-
+    partial: dict = {}
     for construct in underperforming:
-        if construct not in refined:
+        if construct not in codebook:
             print(
                 f"Skipping '{construct}': below PABAK threshold but not present "
                 f"in the codebook."
             )
             continue
 
-        entry = refined[construct]
+        entry = copy.deepcopy(codebook[construct])
         construct_rows = comparison_df[comparison_df["construct"] == construct]
 
         fn_quotes = [
@@ -1128,7 +1128,6 @@ def refine_codebook(
             ]
             if isinstance(q, str) and q.strip()
         ]
-
         fp_quotes = [
             str(q).strip()
             for q in construct_rows.loc[
@@ -1137,27 +1136,187 @@ def refine_codebook(
             if isinstance(q, str) and q.strip()
         ]
 
+        added = False
         if fn_quotes:
             entry.setdefault("examples", [])
-            _extend_unique(entry["examples"], fn_quotes)
+            added |= _extend_unique(entry["examples"], fn_quotes)
         if fp_quotes:
             entry.setdefault("counter_examples", [])
-            _extend_unique(entry["counter_examples"], fp_quotes)
+            added |= _extend_unique(entry["counter_examples"], fp_quotes)
 
-    _write_codebook(refined, output_path)
-    return refined
+        if added:
+            partial[construct] = entry
+
+    return partial
 
 
-def _extend_unique(target: list, new_items: list[str]) -> None:
-    """Append items not already present, preserving order and de-duplicating."""
+def optimize_codebook(
+    comparison_df: pd.DataFrame,
+    concatenated_summary: pd.DataFrame,
+    codebook: dict,
+    human_results: dict,
+    analyzer: "LLMTrackerAnalyzer",
+    csv_path: "Path | str",
+    analyze_kwargs: dict,
+    base_name: str,
+    output_dir: "Path | str" = ".",
+    pabak_threshold: float = 0.8,
+    rerun_optimized_codebook: int = 0,
+) -> list[dict]:
+    """Iteratively refine the poorly performing constructs in a codebook.
+
+    Pass 1 uses the supplied comparison table and summary to produce a partial
+    codebook of the constructs below ``pabak_threshold`` (saved as ``v001``).
+    Each additional rerun re-codes the documents using ONLY the previous
+    partial, compares against the human data filtered to those same constructs,
+    recomputes metrics, and refines again -- focusing the loop ever more tightly
+    on the constructs that are still struggling.
+
+    Each iteration's partial is written to::
+
+        {output_dir}/{base_name}_optimized_codebook_v{NNN}_{timestamp}.json
+
+    Args:
+    ----
+        comparison_df: Pass-1 comparison table from compare_results.
+        concatenated_summary: Pass-1 concatenated summary from
+            compute_summary_tables.
+        codebook: The starting (full) codebook.
+        human_results: Original human coding, keyed by document ID. Used,
+            filtered to the flagged constructs, for re-comparison each rerun.
+        analyzer: An LLMTrackerAnalyzer used to re-code each rerun. Its config
+            also drives the matcher used for re-comparison.
+        csv_path: The CSV of documents to re-code (the same corpus each pass).
+        analyze_kwargs: Keyword arguments forwarded to analyzer.analyze_csv each
+            rerun (e.g. {"text_column": "post"} plus whatever document-ID columns
+            that corpus uses). The loop makes no assumptions about the schema; it
+            simply replays the coding call you used originally.
+        base_name: Prefix for saved file names.
+        output_dir: Directory to write the versioned partials into.
+        pabak_threshold: Constructs with PABAK strictly below this are refined.
+        rerun_optimized_codebook: Number of additional reruns after pass 1.
+            0 (default) produces only v001.
+
+    Returns:
+    -------
+        The list of partial codebooks produced, in order (v001, v002, ...).
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _save(partial: dict, version: int) -> Path:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        name = f"{base_name}_optimized_codebook_v{version:03d}_{timestamp}.json"
+        path = out_dir / name
+        _write_codebook(partial, path)
+        return path
+
+    partials: list[dict] = []
+
+    # --- Pass 1: use the supplied tables (no re-coding) ---
+    partial = refine_codebook(
+        comparison_df, concatenated_summary, codebook, pabak_threshold
+    )
+    if not partial:
+        print("No constructs below the PABAK threshold; nothing to optimize.")
+        return partials
+
+    prev_path = _save(partial, 1)
+    partials.append(partial)
+
+    # --- Reruns: re-code with the previous partial only (Option B) ---
+    comparer = LLMTrackerComparer(config=analyzer.config)
+
+    for i in range(rerun_optimized_codebook):
+        version = i + 2  # v002, v003, ...
+
+        # Re-code using ONLY the previous partial codebook.
+        llm_results, _meta, _errors = analyzer.analyze_csv(
+            csv_path=csv_path,
+            codebook_path=prev_path,
+            **analyze_kwargs,
+        )
+
+        # Compare against human data filtered to the partial's constructs.
+        filtered_human = _filter_human_results(human_results, set(partial.keys()))
+        new_comparison = comparer.compare_results(filtered_human, llm_results)
+        _per_doc, new_concat, _weighted = compute_summary_tables(new_comparison)
+
+        # Refine again, accumulating onto the previous partial's entries.
+        next_partial = refine_codebook(
+            new_comparison, new_concat, partial, pabak_threshold
+        )
+        if not next_partial:
+            print(
+                f"No constructs below threshold after v{version - 1:03d}; "
+                f"stopping early."
+            )
+            break
+
+        prev_path = _save(next_partial, version)
+        partials.append(next_partial)
+        partial = next_partial
+
+    return partials
+
+
+def merge_codebooks(
+    base: dict,
+    partial: dict,
+    output_path: "Path | str | None" = None,
+) -> dict:
+    """Merge a partial (changed-constructs) codebook into a base codebook.
+
+    For each construct in ``partial``, that construct's entry replaces the one in
+    ``base`` (the partial is authoritative, since its example lists already
+    include the originals plus the new quotes). Constructs not present in
+    ``partial`` are left untouched. The inputs are not mutated.
+
+    Args:
+    ----
+        base: The full codebook to update.
+        partial: A partial codebook produced by refine_codebook / optimize_codebook.
+        output_path: Optional path to write the merged codebook to.
+
+    Returns:
+    -------
+        The merged codebook as a new dict.
+    """
+    merged = copy.deepcopy(base)
+    for construct, entry in partial.items():
+        merged[construct] = copy.deepcopy(entry)
+    if output_path is not None:
+        _write_codebook(merged, output_path)
+    return merged
+
+
+def _filter_human_results(human_results: dict, constructs: set) -> dict:
+    """Filter each document's human instances to the given construct set.
+
+    Documents that end up with no matching instances are kept with an empty
+    instance list, so the document set still aligns with the LLM results during
+    comparison.
+    """
+    filtered: dict = {}
+    for doc_id, result in human_results.items():
+        kept = [inst for inst in result.instances if inst.construct in constructs]
+        filtered[doc_id] = AnalysisResult(document_id=doc_id, instances=kept)
+    return filtered
+
+
+def _extend_unique(target: list, new_items: list) -> bool:
+    """Append items not already present. Returns True if anything was added."""
     seen = set(target)
+    added = False
     for item in new_items:
         if item not in seen:
             target.append(item)
             seen.add(item)
+            added = True
+    return added
 
 
-def _write_codebook(codebook: dict, output_path: Path | str) -> None:
+def _write_codebook(codebook: dict, output_path: "Path | str") -> None:
     """Write a codebook dict to JSON."""
     Path(output_path).write_text(
         json.dumps(codebook, indent=2, ensure_ascii=False),
