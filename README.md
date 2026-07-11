@@ -1,3 +1,5 @@
+Feel free to use, but this is in beta version and is still being tested.
+
 # LLM Tracker
 LLM Tracker is a Python package for identifying psychological constructs in
 text data (e.g., interviews, social media posts, chatbot interactions) and comparing LLM-coded results against human-coded results.
