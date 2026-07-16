@@ -2,6 +2,7 @@
 
 import copy
 import json
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -1051,6 +1052,9 @@ def refine_codebook(
     concatenated_summary: pd.DataFrame,
     codebook: dict,
     pabak_threshold: float = 0.8,
+    n_examples: int | str = 50,
+    n_counterexamples: int | str = 50,
+    seed: int = 0,
 ) -> dict:
     """Build a partial codebook (envelope) of the constructs needing work.
 
@@ -1066,12 +1070,24 @@ def refine_codebook(
             with ``construct`` and ``pabak`` columns.
         codebook: Codebook envelope (or flat mapping) to refine.
         pabak_threshold: Constructs with PABAK strictly below this are refined.
+        n_examples: Maximum number of new example quotes (false negatives) to add
+            per construct. An integer greater than 0 caps additions to a random
+            sample of that many; the string "all" adds every new example.
+            Defaults to 50.
+        n_counterexamples: Same as n_examples, but for counter-example quotes
+            (false positives). Defaults to 50.
+        seed: Random seed for the sampling, so codebook builds are reproducible.
+            One seed governs both the example and counter-example draws.
+            Defaults to 0.
 
     Returns:
     -------
         A partial codebook envelope containing only the changed constructs.
 
     """
+    _validate_sample_size(n_examples, "n_examples")
+    _validate_sample_size(n_counterexamples, "n_counterexamples")
+    rng = random.Random(seed)
     source_meta = _codebook_metadata(codebook)
     constructs = codebook_constructs(codebook)
 
@@ -1110,10 +1126,14 @@ def refine_codebook(
         added = False
         if fn_quotes:
             entry.setdefault("examples", [])
-            added |= _extend_unique(entry["examples"], fn_quotes)
+            new_fn = _sample_new(entry["examples"], fn_quotes, n_examples, rng)
+            added |= _extend_unique(entry["examples"], new_fn)
         if fp_quotes:
             entry.setdefault("counter_examples", [])
-            added |= _extend_unique(entry["counter_examples"], fp_quotes)
+            new_fp = _sample_new(
+                entry["counter_examples"], fp_quotes, n_counterexamples, rng
+            )
+            added |= _extend_unique(entry["counter_examples"], new_fp)
 
         if added:
             changed[construct] = entry
@@ -1143,6 +1163,9 @@ def optimize_codebook(
     base_name: str,
     output_dir: Path | str = ".",
     pabak_threshold: float = 0.8,
+    n_examples: int | str = 50,
+    n_counterexamples: int | str = 50,
+    seed: int = 0,
     rerun_optimized_codebook: int = 0,
 ) -> list[dict]:
     """Iteratively refine the poorly performing constructs in a codebook.
@@ -1176,6 +1199,11 @@ def optimize_codebook(
         base_name: Prefix for saved file names.
         output_dir: Directory to write the versioned partials into.
         pabak_threshold: Constructs with PABAK strictly below this are refined.
+        n_examples: Max new example quotes to add per construct each pass: a
+            positive integer, or "all". Defaults to 50.
+        n_counterexamples: Max new counter-example quotes per construct each
+            pass: a positive integer, or "all". Defaults to 50.
+        seed: Random seed for sampling, for reproducible builds. Defaults to 0.
         rerun_optimized_codebook: Number of additional reruns after pass 1.
             0 (default) produces only v001.
 
@@ -1198,7 +1226,13 @@ def optimize_codebook(
 
     # --- Pass 1: use the supplied tables (no re-coding) ---
     partial = refine_codebook(
-        comparison_df, concatenated_summary, codebook, pabak_threshold
+        comparison_df,
+        concatenated_summary,
+        codebook,
+        pabak_threshold,
+        n_examples=n_examples,
+        n_counterexamples=n_counterexamples,
+        seed=seed,
     )
     if not partial["codebook"]:
         print("No constructs below the PABAK threshold; nothing to optimize.")
@@ -1228,7 +1262,13 @@ def optimize_codebook(
 
         # Refine again, accumulating onto the previous partial's entries.
         next_partial = refine_codebook(
-            new_comparison, new_concat, partial, pabak_threshold
+            new_comparison,
+            new_concat,
+            partial,
+            pabak_threshold,
+            n_examples=n_examples,
+            n_counterexamples=n_counterexamples,
+            seed=seed,
         )
         if not next_partial["codebook"]:
             print(
@@ -1324,6 +1364,40 @@ def _filter_human_results(human_results: dict, constructs: set) -> dict:
         kept = [inst for inst in result.instances if inst.construct in constructs]
         filtered[doc_id] = AnalysisResult(document_id=doc_id, instances=kept)
     return filtered
+
+
+def _validate_sample_size(value: int | str, arg_name: str) -> None:
+    """Validate a sample-size argument: a positive int, or the string "all"."""
+    if isinstance(value, str):
+        if value != "all":
+            raise ValueError(
+                f'{arg_name} must be a positive integer or "all", got {value!r}.'
+            )
+        return
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(
+            f'{arg_name} must be a positive integer or "all", got {value!r}.'
+        )
+
+
+def _sample_new(
+    existing: list,
+    candidates: list,
+    limit: int | str,
+    rng: random.Random,
+) -> list:
+    """Return up to ``limit`` candidate quotes not already in ``existing``.
+
+    Candidates already present in ``existing`` are dropped first (so the limit
+    governs how many *new* quotes are added). If more new quotes remain than the
+    limit, a random sample of ``limit`` is drawn using ``rng``. ``limit`` may be
+    the string "all" to keep every new quote.
+    """
+    seen = set(existing)
+    new_quotes = [q for q in candidates if q not in seen]
+    if limit == "all" or len(new_quotes) <= limit:
+        return new_quotes
+    return rng.sample(new_quotes, limit)
 
 
 def _extend_unique(target: list, new_items: list) -> bool:
