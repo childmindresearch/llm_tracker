@@ -1,10 +1,12 @@
+Feel free to use, but this is in beta version and is still being tested.
+
 # LLM Tracker
 LLM Tracker is a Python package for identifying psychological constructs in
 text data (e.g., interviews, social media posts, chatbot interactions) and comparing LLM-coded results against human-coded results.
 
 The package supports:
 
-- Access to thousands of LLMs through OpenRouter API
+- Access to thousands of remote or local LLMs through Mozilla's any-llm API (OpenRouter, Azure, Ollama, etc.)
 - Detect every instance of a construct (e.g., anxiety) and return the verbatim quote (e.g., "I'm worried about my cousin")
 - Comparing human and LLM codings at the quote level (using LLMs to match human and LLM quotes)
 - Computing inter-rater reliability metrics (Kappa, ICC, PABAK) and classification metrics (sensitivity, precision, F1, and PR AUC) and returning summary tables
@@ -34,7 +36,7 @@ poetry install --with tutorials
 
 ## API Key
 
-LLM Tracker uses OpenRouter for LLM calls. You can obtain an API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent (see cost for specific models on OpenRouter). Provide an API key directly:
+LLM Tracker uses any-llm API for LLM calls, which can run the most common APIs (OpenRouter, Azure, Ollama). For instance, you can add an OpenRouter API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent (see cost for specific models on OpenRouter). Provide an API key directly:
 
 ```python
 api_key = "your-openrouter-key"
