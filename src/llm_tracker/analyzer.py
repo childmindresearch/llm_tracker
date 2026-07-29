@@ -2,13 +2,14 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
+from llm_tracker import file_handlers
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import (
     FileLoadError,
+    codebook_constructs,
     create_output_directory,
     get_document_files,
     load_codebook,
@@ -140,7 +141,7 @@ class LLMTrackerAnalyzer:
             self.config = config
             return
 
-        config_kwargs: dict[str, Any] = {
+        config_kwargs = {
             "api_key": api_key,
             "fuzzy_quote_matching": fuzzy_quote_matching,
             "quote_match_threshold": quote_match_threshold,
@@ -207,7 +208,7 @@ class LLMTrackerAnalyzer:
         """
         input_path = Path(input_dir)
         codebook_file = Path(codebook_path)
-        codebook = load_codebook(codebook_file)
+        codebook = codebook_constructs(load_codebook(codebook_file))
         document_paths = get_document_files(input_path)
         output_path = create_output_directory(
             output_name=output_dir, base_dir=Path.cwd()
@@ -274,8 +275,7 @@ class LLMTrackerAnalyzer:
         csv_path: Path | str,
         codebook_path: Path | str,
         text_column: str,
-        subreddit_column: str = "subreddit",
-        author_column: str = "author",
+        id_column: str | None = None,
         output_dir: str | None = None,
     ) -> tuple[dict[str, AnalysisResult], dict[str, dict], list[ErrorRecord]]:
         """Analyze each row in a CSV file as a separate document.
@@ -285,8 +285,9 @@ class LLMTrackerAnalyzer:
             csv_path: Path to the input CSV file.
             codebook_path: Path to the codebook JSON file.
             text_column: Column containing the text to analyze.
-            subreddit_column: Column used as the first part of the document ID.
-            author_column: Column used as the second part of the document ID.
+            id_column: Optional column to use as the document ID. If omitted,
+                the row index (0..N-1) is used. Duplicate IDs get a numeric
+                suffix (e.g. "id", "id_2", "id_3").
             output_dir: Optional base name for the analyzer output directory.
 
         Returns:
@@ -302,13 +303,15 @@ class LLMTrackerAnalyzer:
         """
         csv_file = Path(csv_path)
         codebook_file = Path(codebook_path)
-        codebook = load_codebook(codebook_file)
+        codebook = codebook_constructs(load_codebook(codebook_file))
         output_path = create_output_directory(
             output_name=output_dir, base_dir=Path.cwd()
         )
 
         df = pd.read_csv(csv_file)
-        required_columns = [text_column, subreddit_column, author_column]
+        required_columns = [text_column]
+        if id_column is not None:
+            required_columns.append(id_column)
         missing_columns = [
             column for column in required_columns if column not in df.columns
         ]
@@ -322,11 +325,12 @@ class LLMTrackerAnalyzer:
         success_count = 0
         document_id_counts: dict[str, int] = {}
 
-        for position, (_, row) in enumerate(df.iterrows(), start=1):
-            subreddit = str(row[subreddit_column]).strip()
-            author = str(row[author_column]).strip()
+        for position, (index, row) in enumerate(df.iterrows(), start=1):
             text = str(row[text_column])
-            base_document_id = f"{subreddit}_{author}"
+            if id_column is not None:
+                base_document_id = str(row[id_column]).strip()
+            else:
+                base_document_id = str(index)
 
             document_id_counts[base_document_id] = (
                 document_id_counts.get(base_document_id, 0) + 1
@@ -412,7 +416,7 @@ class LLMTrackerAnalyzer:
 
         """
         output_path = Path(output_dir)
-        codebook = load_codebook(codebook_path)
+        codebook = codebook_constructs(load_codebook(codebook_path))
         failed_records = load_error_records(output_path)
 
         if not failed_records:

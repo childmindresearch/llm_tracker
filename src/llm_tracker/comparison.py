@@ -2,16 +2,22 @@
 
 import copy
 import json
+import random
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score
 
 from llm_tracker.config import AnalyzerConfig
+from llm_tracker.file_handlers import codebook_constructs, ensure_codebook_envelope
 from llm_tracker.models import AnalysisResult, ConstructInstance
 from llm_tracker.prompting import PromptingError, call_llm_api
+
+if TYPE_CHECKING:
+    from llm_tracker.analyzer import LLMTrackerAnalyzer
 
 COMPARISON_COLUMNS = [
     "doc_id",
@@ -382,15 +388,6 @@ class LLMTrackerComparer:
         match_model: str | None = None,
         config: AnalyzerConfig | None = None,
     ) -> None:
-        """Create a comparer.
-
-        Args:
-        ----
-            api_key: API key or path to an env file containing it.
-            match_model: Model name for the matcher. Ignored if config is given.
-            config: Optional AnalyzerConfig. When provided, other args are ignored.
-
-        """
         if config is not None:
             self.config = config
         elif match_model is not None:
@@ -701,10 +698,7 @@ def _metrics_for_counts(counts: pd.DataFrame) -> pd.DataFrame:
     if counts.empty:
         return pd.DataFrame(columns=["tp", "fp", "fn", "union", *METRICS])
     return pd.DataFrame(
-        [
-            _metrics(row.tp, row.fp, row.fn)  # type: ignore[arg-type]
-            for row in counts.itertuples()
-        ]
+        [_metrics(row.tp, row.fp, row.fn) for row in counts.itertuples()]
     )
 
 
@@ -746,7 +740,7 @@ def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
 
     results = {"Overall": score_group(predictions)}
     for construct, group in predictions.groupby("construct"):
-        results[construct] = score_group(group)  # type: ignore[index]
+        results[construct] = score_group(group)
 
     return results
 
@@ -802,9 +796,7 @@ def _weighted_median(values: list[float], weights: list[float]) -> float:
         Weighted median of the input values.
 
     """
-    value_weight_pairs = sorted(
-        zip(values, weights, strict=False), key=lambda item: item[0]
-    )
+    value_weight_pairs = sorted(zip(values, weights), key=lambda item: item[0])
     halfway_weight = sum(weights) / 2
     cumulative_weight = 0.0
 
@@ -921,7 +913,7 @@ def compute_summary_tables(
     total_docs = df["doc_id"].nunique()
     construct_names = df["construct"].unique().tolist()
     concatenated_stats = [
-        _doc_stats(str(row.construct), per_doc, total_docs, construct_names)
+        _doc_stats(row.construct, per_doc, total_docs, construct_names)
         for row in concatenated.itertuples()
     ]
     concatenated = pd.concat([concatenated, pd.DataFrame(concatenated_stats)], axis=1)
@@ -935,12 +927,12 @@ def compute_summary_tables(
             (df["doc_id"] == row.doc_id) & (df["construct"] == row.construct)
         ]
         scores = compute_pr_auc(rows_for_doc_construct)
-        per_doc_pr_auc.append(scores.get(row.construct))  # type: ignore[arg-type]
+        per_doc_pr_auc.append(scores.get(row.construct))
     per_doc["pr_auc"] = per_doc_pr_auc
 
     weighted = _weighted_summary(per_doc)
     weighted_stats = [
-        _doc_stats(str(row.construct), per_doc, total_docs, construct_names)
+        _doc_stats(row.construct, per_doc, total_docs, construct_names)
         for row in weighted.itertuples()
     ]
     weighted = pd.concat([weighted, pd.DataFrame(weighted_stats)], axis=1)
@@ -1059,43 +1051,45 @@ def refine_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
     codebook: dict,
-    output_path: Path | str,
-    pabak_threshold: float = 0.8,  # make this arbitrary threshold 'metric_threshold' , default pabak
+    pabak_threshold: float = 0.8,
+    n_examples: int | str = 50,
+    n_counterexamples: int | str = 50,
+    seed: int = 0,
 ) -> dict:
-    """Enrich a codebook using disagreements on poorly performing constructs.
+    """Build a partial codebook (envelope) of the constructs needing work.
 
-    For every construct whose PABAK (from the concatenated summary table) is
-    below ``pabak_threshold``, this collects the quotes from that construct's
-    disagreements and folds them back into the codebook:
-
-    - False negatives (human coded it, the LLM missed it) are added to the
-      construct's ``examples`` -- they are true instances the LLM should learn
-      to catch.
-    - False positives (the LLM coded it with no human match) are added to the
-      construct's ``counter_examples`` -- they are passages the LLM should learn
-      to reject. The ``counter_examples`` key is created if it does not exist.
-
-    Constructs at or above the threshold, constructs with an undefined (None)
-    PABAK, and the summary's ``Overall`` row are left unchanged. The input
-    codebook is not mutated; a deep copy is returned and written to JSON.
+    The returned partial is itself enveloped: its ``codebook`` holds only the
+    changed constructs, and its ``metadata`` marks it a partial and records the
+    source codebook it was built from. No version is minted here -- versions are
+    only assigned by ``merge_codebooks``.
 
     Args:
     ----
-        comparison_df: Row-level comparison table from compare_results, with
-            ``construct``, ``status``, ``human_quote``, and ``llm_quote`` columns.
-        concatenated_summary: Concatenated summary table from
-            compute_summary_tables, with ``construct`` and ``pabak`` columns.
-        codebook: Codebook dict mapping construct name to a dict with at least a
-            ``definition`` and an ``examples`` list.
-        output_path: Path to write the refined codebook JSON to.
-        pabak_threshold: Constructs with PABAK strictly below this value are
-            refined. Defaults to 0.8.
+        comparison_df: Row-level comparison table from compare_results.
+        concatenated_summary: Concatenated summary from compute_summary_tables,
+            with ``construct`` and ``pabak`` columns.
+        codebook: Codebook envelope (or flat mapping) to refine.
+        pabak_threshold: Constructs with PABAK strictly below this are refined.
+        n_examples: Maximum number of new example quotes (false negatives) to add
+            per construct. An integer greater than 0 caps additions to a random
+            sample of that many; the string "all" adds every new example.
+            Defaults to 50.
+        n_counterexamples: Same as n_examples, but for counter-example quotes
+            (false positives). Defaults to 50.
+        seed: Random seed for the sampling, so codebook builds are reproducible.
+            One seed governs both the example and counter-example draws.
+            Defaults to 0.
 
     Returns:
     -------
-        The refined codebook as a new dict (also written to ``output_path``).
+        A partial codebook envelope containing only the changed constructs.
+
     """
-    refined = copy.deepcopy(codebook)
+    _validate_sample_size(n_examples, "n_examples")
+    _validate_sample_size(n_counterexamples, "n_counterexamples")
+    rng = random.Random(seed)
+    source_meta = _codebook_metadata(codebook)
+    constructs = codebook_constructs(codebook)
 
     summary = concatenated_summary[concatenated_summary["construct"] != "Overall"]
     underperforming = {
@@ -1106,55 +1100,316 @@ def refine_codebook(
         and float(row.pabak) < pabak_threshold
     }
 
-    if not underperforming:
-        _write_codebook(refined, output_path)
-        return refined
-
+    changed: dict = {}
     for construct in underperforming:
-        if construct not in refined:
+        if construct not in constructs:
             print(
                 f"Skipping '{construct}': below PABAK threshold but not present "
                 f"in the codebook."
             )
             continue
 
-        entry = refined[construct]
-        construct_rows = comparison_df[comparison_df["construct"] == construct]
+        entry = copy.deepcopy(constructs[construct])
+        rows = comparison_df[comparison_df["construct"] == construct]
 
         fn_quotes = [
             str(q).strip()
-            for q in construct_rows.loc[
-                construct_rows["status"] == "human_only", "human_quote"
-            ]
+            for q in rows.loc[rows["status"] == "human_only", "human_quote"]
             if isinstance(q, str) and q.strip()
         ]
-
         fp_quotes = [
             str(q).strip()
-            for q in construct_rows.loc[
-                construct_rows["status"] == "llm_only", "llm_quote"
-            ]
+            for q in rows.loc[rows["status"] == "llm_only", "llm_quote"]
             if isinstance(q, str) and q.strip()
         ]
 
+        added = False
         if fn_quotes:
             entry.setdefault("examples", [])
-            _extend_unique(entry["examples"], fn_quotes)
+            new_fn = _sample_new(entry["examples"], fn_quotes, n_examples, rng)
+            added |= _extend_unique(entry["examples"], new_fn)
         if fp_quotes:
             entry.setdefault("counter_examples", [])
-            _extend_unique(entry["counter_examples"], fp_quotes)
+            new_fp = _sample_new(
+                entry["counter_examples"], fp_quotes, n_counterexamples, rng
+            )
+            added |= _extend_unique(entry["counter_examples"], new_fp)
 
-    _write_codebook(refined, output_path)
-    return refined
+        if added:
+            changed[construct] = entry
+
+    partial_meta = {
+        "name": source_meta.get("name", ""),
+        "partial": True,
+        "citation": source_meta.get("citation", ""),
+        "built_from": [
+            {
+                "name": source_meta.get("name", ""),
+                "version": source_meta.get("version"),
+            }
+        ],
+    }
+    return {"metadata": partial_meta, "codebook": changed}
 
 
-def _extend_unique(target: list, new_items: list[str]) -> None:
-    """Append items not already present, preserving order and de-duplicating."""
+def optimize_codebook(
+    comparison_df: pd.DataFrame,
+    concatenated_summary: pd.DataFrame,
+    codebook: dict,
+    human_results: dict,
+    analyzer: "LLMTrackerAnalyzer",
+    csv_path: Path | str,
+    analyze_kwargs: dict,
+    base_name: str,
+    output_dir: Path | str = ".",
+    pabak_threshold: float = 0.8,
+    n_examples: int | str = 50,
+    n_counterexamples: int | str = 50,
+    seed: int = 0,
+    rerun_optimized_codebook: int = 0,
+) -> list[dict]:
+    """Iteratively refine the poorly performing constructs in a codebook.
+
+    Pass 1 uses the supplied comparison table and summary to produce a partial
+    codebook of the constructs below ``pabak_threshold`` (saved as ``v001``).
+    Each additional rerun re-codes the documents using ONLY the previous
+    partial, compares against the human data filtered to those same constructs,
+    recomputes metrics, and refines again -- focusing the loop ever more tightly
+    on the constructs that are still struggling.
+
+    Each iteration's partial is written to::
+
+        {output_dir}/{base_name}_optimized_codebook_v{NNN}_{timestamp}.json
+
+    Args:
+    ----
+        comparison_df: Pass-1 comparison table from compare_results.
+        concatenated_summary: Pass-1 concatenated summary from
+            compute_summary_tables.
+        codebook: The starting (full) codebook envelope.
+        human_results: Original human coding, keyed by document ID. Used,
+            filtered to the flagged constructs, for re-comparison each rerun.
+        analyzer: An LLMTrackerAnalyzer used to re-code each rerun. Its config
+            also drives the matcher used for re-comparison.
+        csv_path: The CSV of documents to re-code (the same corpus each pass).
+        analyze_kwargs: Keyword arguments forwarded to analyzer.analyze_csv each
+            rerun (e.g. {"text_column": "post"} plus whatever document-ID columns
+            that corpus uses). The loop makes no assumptions about the schema; it
+            simply replays the coding call you used originally.
+        base_name: Prefix for saved file names.
+        output_dir: Directory to write the versioned partials into.
+        pabak_threshold: Constructs with PABAK strictly below this are refined.
+        n_examples: Max new example quotes to add per construct each pass: a
+            positive integer, or "all". Defaults to 50.
+        n_counterexamples: Max new counter-example quotes per construct each
+            pass: a positive integer, or "all". Defaults to 50.
+        seed: Random seed for sampling, for reproducible builds. Defaults to 0.
+        rerun_optimized_codebook: Number of additional reruns after pass 1.
+            0 (default) produces only v001.
+
+    Returns:
+    -------
+        The list of partial codebook envelopes produced (v001, v002, ...).
+
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _save(partial: dict, version: int) -> Path:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        name = f"{base_name}_optimized_codebook_v{version:03d}_{timestamp}.json"
+        path = out_dir / name
+        _write_codebook(partial, path)
+        return path
+
+    partials: list[dict] = []
+
+    # --- Pass 1: use the supplied tables (no re-coding) ---
+    partial = refine_codebook(
+        comparison_df,
+        concatenated_summary,
+        codebook,
+        pabak_threshold,
+        n_examples=n_examples,
+        n_counterexamples=n_counterexamples,
+        seed=seed,
+    )
+    if not partial["codebook"]:
+        print("No constructs below the PABAK threshold; nothing to optimize.")
+        return partials
+
+    prev_path = _save(partial, 1)
+    partials.append(partial)
+
+    # --- Reruns: re-code with the previous partial only (Option B) ---
+    comparer = LLMTrackerComparer(config=analyzer.config)
+
+    for i in range(rerun_optimized_codebook):
+        version = i + 2  # v002, v003, ...
+
+        # Re-code using ONLY the previous partial codebook.
+        llm_results, _meta, _errors = analyzer.analyze_csv(
+            csv_path=csv_path,
+            codebook_path=prev_path,
+            **analyze_kwargs,
+        )
+
+        # Compare against human data filtered to the partial's constructs.
+        flagged = set(partial["codebook"].keys())
+        filtered_human = _filter_human_results(human_results, flagged)
+        new_comparison = comparer.compare_results(filtered_human, llm_results)
+        _per_doc, new_concat, _weighted = compute_summary_tables(new_comparison)
+
+        # Refine again, accumulating onto the previous partial's entries.
+        next_partial = refine_codebook(
+            new_comparison,
+            new_concat,
+            partial,
+            pabak_threshold,
+            n_examples=n_examples,
+            n_counterexamples=n_counterexamples,
+            seed=seed,
+        )
+        if not next_partial["codebook"]:
+            print(
+                f"No constructs below threshold after v{version - 1:03d}; "
+                f"stopping early."
+            )
+            break
+
+        prev_path = _save(next_partial, version)
+        partials.append(next_partial)
+        partial = next_partial
+
+    return partials
+
+
+def merge_codebooks(
+    base: dict,
+    partial: dict,
+    version: int | None = None,
+    output_path: Path | str | None = None,
+) -> dict:
+    """Merge a partial (changed-constructs) codebook into a base codebook.
+
+    Each construct in the partial replaces the corresponding entry in the base.
+    Constructs absent from the partial are left untouched. A new version is
+    minted: ``version`` if given, otherwise the base version + 1. Lineage
+    (``built_from``) records the base codebook's name and version.
+
+    Args:
+    ----
+        base: The full codebook envelope to update.
+        partial: A partial codebook envelope from refine_codebook / optimize.
+        version: Optional explicit version for the merged codebook. If omitted,
+            the base version is incremented by 1.
+        output_path: Optional path to write the merged codebook envelope to.
+
+    Returns:
+    -------
+        The merged codebook envelope (new dict).
+
+    """
+    base = ensure_codebook_envelope(copy.deepcopy(base))
+    base_meta = base["metadata"]
+    base_constructs = base["codebook"]
+
+    if not partial.get("metadata", {}).get("partial"):
+        print(
+            "Warning: 'partial' argument is not flagged as a partial codebook; "
+            "merging it anyway (its constructs will replace the base's)."
+        )
+    partial_constructs = codebook_constructs(partial)
+
+    merged_constructs = copy.deepcopy(base_constructs)
+    for construct, entry in partial_constructs.items():
+        merged_constructs[construct] = copy.deepcopy(entry)
+
+    base_version = base_meta.get("version", 1) or 1
+    new_version = version if version is not None else base_version + 1
+
+    merged_meta = {
+        "name": base_meta.get("name", ""),
+        "version": new_version,
+        "citation": base_meta.get("citation", ""),
+        "built_from": [
+            {"name": base_meta.get("name", ""), "version": base_meta.get("version")}
+        ],
+    }
+    merged = {"metadata": merged_meta, "codebook": merged_constructs}
+
+    if output_path is not None:
+        _write_codebook(merged, output_path)
+    return merged
+
+
+def _codebook_metadata(codebook: dict) -> dict:
+    """Return the metadata block of a codebook envelope (defaults if flat)."""
+    if isinstance(codebook, dict) and "metadata" in codebook:
+        meta = codebook["metadata"]
+        if isinstance(meta, dict):
+            return meta
+    return {"name": "", "version": 1, "citation": "", "built_from": []}
+
+
+def _filter_human_results(human_results: dict, constructs: set) -> dict:
+    """Filter each document's human instances to the given construct set.
+
+    Documents that end up with no matching instances are kept with an empty
+    instance list, so the document set still aligns with the LLM results during
+    comparison.
+    """
+    filtered: dict = {}
+    for doc_id, result in human_results.items():
+        kept = [inst for inst in result.instances if inst.construct in constructs]
+        filtered[doc_id] = AnalysisResult(document_id=doc_id, instances=kept)
+    return filtered
+
+
+def _validate_sample_size(value: int | str, arg_name: str) -> None:
+    """Validate a sample-size argument: a positive int, or the string "all"."""
+    if isinstance(value, str):
+        if value != "all":
+            raise ValueError(
+                f'{arg_name} must be a positive integer or "all", got {value!r}.'
+            )
+        return
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(
+            f'{arg_name} must be a positive integer or "all", got {value!r}.'
+        )
+
+
+def _sample_new(
+    existing: list,
+    candidates: list,
+    limit: int | str,
+    rng: random.Random,
+) -> list:
+    """Return up to ``limit`` candidate quotes not already in ``existing``.
+
+    Candidates already present in ``existing`` are dropped first (so the limit
+    governs how many *new* quotes are added). If more new quotes remain than the
+    limit, a random sample of ``limit`` is drawn using ``rng``. ``limit`` may be
+    the string "all" to keep every new quote.
+    """
+    seen = set(existing)
+    new_quotes = [q for q in candidates if q not in seen]
+    if limit == "all" or len(new_quotes) <= limit:
+        return new_quotes
+    return rng.sample(new_quotes, limit)
+
+
+def _extend_unique(target: list, new_items: list) -> bool:
+    """Append items not already present. Returns True if anything was added."""
     seen = set(target)
+    added = False
     for item in new_items:
         if item not in seen:
             target.append(item)
             seen.add(item)
+            added = True
+    return added
 
 
 def _write_codebook(codebook: dict, output_path: Path | str) -> None:
