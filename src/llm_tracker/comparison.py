@@ -7,9 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import krippendorff
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, cohen_kappa_score
 
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import codebook_constructs, ensure_codebook_envelope
@@ -1418,3 +1419,224 @@ def _write_codebook(codebook: dict, output_path: Path | str) -> None:
         json.dumps(codebook, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+#   import krippendorff
+#   from sklearn.metrics import cohen_kappa_score
+
+
+def build_presence_grid(comparison_df: pd.DataFrame) -> pd.DataFrame:
+    """Build the document x construct presence/count grid from a comparison table.
+
+    The comparison table records span-level coding instances. This derives the
+    document-level view needed for chance-corrected agreement statistics: one
+    row per (document, construct) pair, with per-rater instance counts and
+    presence flags. The roster is data-only -- every document in the comparison
+    crossed with every construct either rater used -- so pairs neither rater
+    coded appear as 0/0 rows (the true negatives that span-level metrics cannot
+    provide).
+
+    Args:
+    ----
+        comparison_df: Row-level comparison table from compare_results, with
+            ``doc_id``, ``construct``, and ``status`` columns.
+
+    Returns:
+    -------
+        DataFrame with columns ``doc_id``, ``construct``, ``human_count``,
+        ``llm_count``, ``human_present``, ``llm_present``.
+
+    """
+    if comparison_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "doc_id",
+                "construct",
+                "human_count",
+                "llm_count",
+                "human_present",
+                "llm_present",
+            ]
+        )
+
+    df = comparison_df.copy()
+    df["human_inst"] = df["status"].isin(["matched", "human_only"]).astype(int)
+    df["llm_inst"] = df["status"].isin(["matched", "llm_only"]).astype(int)
+
+    counts = (
+        df.groupby(["doc_id", "construct"])[["human_inst", "llm_inst"]]
+        .sum()
+        .reset_index()
+        .rename(columns={"human_inst": "human_count", "llm_inst": "llm_count"})
+    )
+
+    # Full data-only roster: all documents x all constructs seen in the data.
+    documents = sorted(df["doc_id"].unique())
+    constructs = sorted(df["construct"].unique())
+    roster = pd.MultiIndex.from_product(
+        [documents, constructs], names=["doc_id", "construct"]
+    ).to_frame(index=False)
+
+    grid = roster.merge(counts, on=["doc_id", "construct"], how="left").fillna(0)
+    grid["human_count"] = grid["human_count"].astype(int)
+    grid["llm_count"] = grid["llm_count"].astype(int)
+    grid["human_present"] = (grid["human_count"] > 0).astype(int)
+    grid["llm_present"] = (grid["llm_count"] > 0).astype(int)
+    return grid
+
+
+def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
+    """Compute chance-corrected agreement metrics from a presence/count grid.
+
+    Binary metrics (Cohen's kappa, nominal Krippendorff's alpha) measure
+    detection agreement -- do the raters agree the construct is present in a
+    document. Count-based metrics (linear weighted kappa, ICC(2,1), ordinal
+    Krippendorff's alpha) measure intensity agreement -- do they agree on how
+    many instances a document contains. One row per construct, plus a pooled
+    ``Overall`` row computed across all (document, construct) pairs.
+
+    A metric is NaN where it is undefined -- most commonly when a rater's
+    ratings are constant for a construct (e.g. the human never coded it), which
+    leaves no variance for chance correction. The ``human_present`` /
+    ``llm_present`` columns make these cases interpretable; Krippendorff's
+    alpha tolerates some situations kappa cannot.
+
+    Args:
+    ----
+        grid: Output of build_presence_grid.
+
+    Returns:
+    -------
+        DataFrame with columns ``construct``, ``n_docs``, ``human_present``,
+        ``llm_present``, ``cohens_kappa``, ``weighted_kappa``, ``icc``,
+        ``kripp_alpha_nominal``, ``kripp_alpha_ordinal``.
+
+    """
+    columns = [
+        "construct",
+        "n_docs",
+        "human_present",
+        "llm_present",
+        "cohens_kappa",
+        "weighted_kappa",
+        "icc",
+        "kripp_alpha_nominal",
+        "kripp_alpha_ordinal",
+    ]
+    if grid.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+    groups: list[tuple[str, pd.DataFrame]] = [
+        (str(construct), group) for construct, group in grid.groupby("construct")
+    ]
+    groups.append(("Overall", grid))
+
+    for construct, group in groups:
+        rows.append(
+            {
+                "construct": construct,
+                "n_docs": group["doc_id"].nunique(),
+                "human_present": int(group["human_present"].sum()),
+                "llm_present": int(group["llm_present"].sum()),
+                **_agreement_scores(
+                    group["human_present"].to_numpy(),
+                    group["llm_present"].to_numpy(),
+                    group["human_count"].to_numpy(),
+                    group["llm_count"].to_numpy(),
+                ),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _agreement_scores(
+    human_presence: "np.ndarray",
+    llm_presence: "np.ndarray",
+    human_counts: "np.ndarray",
+    llm_counts: "np.ndarray",
+) -> dict:
+    """Compute the five agreement statistics for one construct (or pooled)."""
+    return {
+        "cohens_kappa": _safe_kappa(human_presence, llm_presence, weights=None),
+        "weighted_kappa": _safe_kappa(human_counts, llm_counts, weights="linear"),
+        "icc": _icc_2_1(human_counts, llm_counts),
+        "kripp_alpha_nominal": _safe_alpha(
+            human_presence, llm_presence, level="nominal"
+        ),
+        "kripp_alpha_ordinal": _safe_alpha(human_counts, llm_counts, level="ordinal"),
+    }
+
+
+def _safe_kappa(
+    ratings_a: "np.ndarray",
+    ratings_b: "np.ndarray",
+    weights: str | None,
+) -> float:
+    """Cohen's kappa that returns NaN where the statistic is undefined."""
+    if len(ratings_a) == 0:
+        return float("nan")
+    # Constant ratings on either side leave no variance to chance-correct.
+    if len(np.unique(ratings_a)) < 2 or len(np.unique(ratings_b)) < 2:
+        return float("nan")
+    try:
+        return round(float(cohen_kappa_score(ratings_a, ratings_b, weights=weights)), 4)
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def _safe_alpha(
+    ratings_a: "np.ndarray",
+    ratings_b: "np.ndarray",
+    level: str,
+) -> float:
+    """Krippendorff's alpha that returns NaN where the statistic is undefined."""
+    if len(ratings_a) == 0:
+        return float("nan")
+    data = np.vstack([ratings_a, ratings_b]).astype(float)
+    # Alpha is undefined when every rating in the matrix is identical.
+    if len(np.unique(data)) < 2:
+        return float("nan")
+    try:
+        return round(
+            float(
+                krippendorff.alpha(reliability_data=data, level_of_measurement=level)
+            ),
+            4,
+        )
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def _icc_2_1(ratings_a: "np.ndarray", ratings_b: "np.ndarray") -> float:
+    """ICC(2,1): two-way random effects, absolute agreement, single measure.
+
+    Computed from the classic mean-squares decomposition (Shrout & Fleiss,
+    1979) for n subjects x k=2 raters. Returns NaN where undefined (fewer than
+    two subjects, or zero variance everywhere).
+    """
+    n = len(ratings_a)
+    if n < 2:
+        return float("nan")
+
+    data = np.vstack([ratings_a, ratings_b]).astype(float).T  # n subjects x 2
+    k = 2
+
+    grand_mean = data.mean()
+    subject_means = data.mean(axis=1)
+    rater_means = data.mean(axis=0)
+
+    ss_total = ((data - grand_mean) ** 2).sum()
+    ss_subjects = k * ((subject_means - grand_mean) ** 2).sum()
+    ss_raters = n * ((rater_means - grand_mean) ** 2).sum()
+    ss_error = ss_total - ss_subjects - ss_raters
+
+    ms_subjects = ss_subjects / (n - 1)
+    ms_raters = ss_raters / (k - 1)
+    ms_error = ss_error / ((n - 1) * (k - 1))
+
+    denominator = ms_subjects + (k - 1) * ms_error + (k / n) * (ms_raters - ms_error)
+    if denominator == 0 or np.isnan(denominator):
+        return float("nan")
+    return round(float((ms_subjects - ms_error) / denominator), 4)
