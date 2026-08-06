@@ -711,3 +711,108 @@ def load_error_records(output_dir: Path | str) -> list[ErrorRecord]:
         errors.append(ErrorRecord(**data))
 
     return errors
+
+
+def validate_constructs(
+    human_results: dict[str, AnalysisResult],
+    codebook: dict,
+    strict: bool = False,
+) -> list[str]:
+    """Check that every construct in the human coding exists in the codebook.
+
+    The comparison pipeline matches human and LLM instances by exact construct
+    name, so any human construct absent from the codebook silently becomes pure
+    disagreement (all false negatives). This validator surfaces those mismatches
+    before they can distort the metrics.
+
+    Args:
+    ----
+        human_results: Human coding results keyed by document ID, as returned by
+            load_human_coding.
+        codebook: The codebook envelope (or flat mapping) the LLM codes from.
+        strict: If True, raise a ValueError when unknown constructs are found
+            instead of only printing a warning. Defaults to False.
+
+    Returns:
+    -------
+        Sorted list of construct names present in the human coding but not in
+        the codebook. Empty when everything matches.
+
+    Raises:
+    ------
+        ValueError: If strict is True and unknown constructs are found.
+
+    """
+    known = set(codebook_constructs(codebook).keys())
+    seen: set[str] = {
+        instance.construct
+        for result in human_results.values()
+        for instance in result.instances
+    }
+    unknown = sorted(seen - known)
+
+    if unknown:
+        message = (
+            f"{len(unknown)} human construct(s) not found in the codebook: "
+            f"{unknown}. These will not match any LLM coding and will appear "
+            f"as pure disagreement. Rename them in your data or apply "
+            f"apply_construct_mapping() before comparing."
+        )
+        if strict:
+            raise ValueError(message)
+        print(f"Warning: {message}")
+
+    return unknown
+
+
+def apply_construct_mapping(
+    human_results: dict[str, AnalysisResult],
+    mapping: dict[str, str],
+) -> dict[str, AnalysisResult]:
+    """Rename constructs in human coding results using an explicit mapping.
+
+    Use this to reconcile human construct names with the codebook when they
+    differ (e.g. {"social anxiety sx": "Social Anxiety"}). The mapping is
+    applied to every instance; constructs not present in the mapping are left
+    unchanged. The input is not mutated -- a new results dict is returned.
+
+    Any mapping keys that never matched a construct in the data are reported,
+    to help catch typos in the mapping itself.
+
+    Args:
+    ----
+        human_results: Human coding results keyed by document ID.
+        mapping: Old-name to new-name construct translations, written by the
+            user. Keys are the names as they appear in the human data; values
+            are the codebook names to replace them with.
+
+    Returns:
+    -------
+        A new results dict with construct names translated.
+
+    """
+    used: set[str] = set()
+    remapped: dict[str, AnalysisResult] = {}
+
+    for doc_id, result in human_results.items():
+        new_instances = []
+        for instance in result.instances:
+            if instance.construct in mapping:
+                used.add(instance.construct)
+                new_instances.append(
+                    instance.model_copy(
+                        update={"construct": mapping[instance.construct]}
+                    )
+                )
+            else:
+                new_instances.append(instance)
+        remapped[doc_id] = AnalysisResult(document_id=doc_id, instances=new_instances)
+
+    unused = sorted(set(mapping) - used)
+    if unused:
+        print(
+            f"Note: {len(unused)} mapping key(s) matched nothing in the data "
+            f"(possible typos?): {unused}"
+        )
+
+    return remapped
