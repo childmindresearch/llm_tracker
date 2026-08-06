@@ -1449,6 +1449,21 @@ docs = ["intersphinx-registry", "myst-parser", "pydata-sphinx-theme", "sphinx-au
 test = ["ipykernel", "pre-commit", "pytest (<9)", "pytest-cov", "pytest-timeout"]
 
 [[package]]
+name = "krippendorff"
+version = "0.8.2"
+description = "Fast computation of the Krippendorff's alpha measure."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "krippendorff-0.8.2-py3-none-any.whl", hash = "sha256:1922ff73f7caa5faab6237a1abcb4f3e6ab605e3f7d39acd7998176873b8cd57"},
+    {file = "krippendorff-0.8.2.tar.gz", hash = "sha256:f975bf4b5d93439d3264c4fc85a45d014aca9f5f9fca17f18fa2f3c89ee158ca"},
+]
+
+[package.dependencies]
+numpy = ">=1.21,<3"
+
+[[package]]
 name = "langcodes"
 version = "3.5.1"
 description = "Tools for labeling human languages with IETF language tags"
@@ -4527,4 +4542,4 @@ dev = ["pytest", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "4b95655074ef1da77ba3deeb572f940f221b1d077e6e6c03a9a56baa27fc3732"
+content-hash = "6f5f076fad01efc1ef0bf303db3873c297e8d429544012045df8cf7ab38f3eea"
