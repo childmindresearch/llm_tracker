@@ -940,7 +940,9 @@ def compute_summary_tables(
     for table in [per_doc, concatenated]:
         for metric in [*METRICS, "pr_auc"]:
             if metric in table:
-                table[metric] = table[metric].round(4)
+                table[metric] = np.round(
+                    pd.to_numeric(table[metric], errors="coerce"), 4
+                )
 
     return per_doc, concatenated, weighted
 
