@@ -941,7 +941,9 @@ def compute_summary_tables(
     for table in [per_doc, concatenated]:
         for metric in [*METRICS, "pr_auc"]:
             if metric in table:
-                table[metric] = table[metric].round(4)
+                table[metric] = np.round(
+                    pd.to_numeric(table[metric], errors="coerce"), 4
+                )
 
     return per_doc, concatenated, weighted
 
@@ -1519,7 +1521,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
         "llm_present",
         "cohens_kappa",
         "weighted_kappa",
-        "icc",
+        "ICC(2,1)",
         "kripp_alpha_nominal",
         "kripp_alpha_ordinal",
     ]
@@ -1561,7 +1563,7 @@ def _agreement_scores(
     return {
         "cohens_kappa": _safe_kappa(human_presence, llm_presence, weights=None),
         "weighted_kappa": _safe_kappa(human_counts, llm_counts, weights="linear"),
-        "icc": _icc_2_1(human_counts, llm_counts),
+        "ICC(2,1)": _icc_2_1(human_counts, llm_counts),
         "kripp_alpha_nominal": _safe_alpha(
             human_presence, llm_presence, level="nominal"
         ),
