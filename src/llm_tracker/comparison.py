@@ -1423,11 +1423,10 @@ def _write_codebook(codebook: dict, output_path: Path | str) -> None:
     )
 
 
-#   import krippendorff
-#   from sklearn.metrics import cohen_kappa_score
-
-
-def build_presence_grid(comparison_df: pd.DataFrame) -> pd.DataFrame:
+def build_presence_grid(
+    comparison_df: pd.DataFrame,
+    presence_threshold: int = 1,
+) -> pd.DataFrame:
     """Build the document x construct presence/count grid from a comparison table.
 
     The comparison table records span-level coding instances. This derives the
@@ -1438,17 +1437,37 @@ def build_presence_grid(comparison_df: pd.DataFrame) -> pd.DataFrame:
     coded appear as 0/0 rows (the true negatives that span-level metrics cannot
     provide).
 
+    Presence is a binarization of the counts: a construct counts as present in a
+    document when a rater coded it at least ``presence_threshold`` times. The
+    default of 1 means "coded at all". Raise it to require multiple instances
+    before a construct is considered present (e.g. 2 = at least two instances).
+
     Args:
     ----
         comparison_df: Row-level comparison table from compare_results, with
             ``doc_id``, ``construct``, and ``status`` columns.
+        presence_threshold: Minimum instance count for a construct to be marked
+            present in a document. Must be a positive integer. Defaults to 1.
 
     Returns:
     -------
         DataFrame with columns ``doc_id``, ``construct``, ``human_count``,
         ``llm_count``, ``human_present``, ``llm_present``.
 
+    Raises:
+    ------
+        ValueError: If presence_threshold is not a positive integer.
+
     """
+    if (
+        not isinstance(presence_threshold, int)
+        or isinstance(presence_threshold, bool)
+        or presence_threshold < 1
+    ):
+        raise ValueError(
+            f"presence_threshold must be a positive integer, got "
+            f"{presence_threshold!r}."
+        )
     if comparison_df.empty:
         return pd.DataFrame(
             columns=[
@@ -1482,8 +1501,8 @@ def build_presence_grid(comparison_df: pd.DataFrame) -> pd.DataFrame:
     grid = roster.merge(counts, on=["doc_id", "construct"], how="left").fillna(0)
     grid["human_count"] = grid["human_count"].astype(int)
     grid["llm_count"] = grid["llm_count"].astype(int)
-    grid["human_present"] = (grid["human_count"] > 0).astype(int)
-    grid["llm_present"] = (grid["llm_count"] > 0).astype(int)
+    grid["human_present"] = (grid["human_count"] >= presence_threshold).astype(int)
+    grid["llm_present"] = (grid["llm_count"] >= presence_threshold).astype(int)
     return grid
 
 
@@ -1521,7 +1540,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
         "llm_present",
         "cohens_kappa",
         "weighted_kappa",
-        "ICC(2,1)",
+        "icc",
         "kripp_alpha_nominal",
         "kripp_alpha_ordinal",
     ]
@@ -1563,7 +1582,7 @@ def _agreement_scores(
     return {
         "cohens_kappa": _safe_kappa(human_presence, llm_presence, weights=None),
         "weighted_kappa": _safe_kappa(human_counts, llm_counts, weights="linear"),
-        "ICC(2,1)": _icc_2_1(human_counts, llm_counts),
+        "icc": _icc_2_1(human_counts, llm_counts),
         "kripp_alpha_nominal": _safe_alpha(
             human_presence, llm_presence, level="nominal"
         ),
