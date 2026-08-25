@@ -186,3 +186,8 @@ This package sends text to an LLM API during analysis and matching. Do not send
 identifiable or sensitive data unless it has been properly anonymized and your
 API provider's data handling policy is appropriate for your use case.
 
+For a walkthrough of anonymizing documents locally before analysis — using
+[anonymize-pii](https://github.com/childmindresearch/anonymize-pii), which runs
+entirely on your own machine — see
+[tutorials/anonymization_tutorial.ipynb](tutorials/anonymization_tutorial.ipynb).
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/anonymization_tutorial.ipynb)
