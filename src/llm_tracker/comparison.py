@@ -7,9 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import krippendorff
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, cohen_kappa_score
 
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import codebook_constructs, ensure_codebook_envelope
@@ -37,7 +38,7 @@ COMPARISON_COLUMNS = [
     "fn",
 ]
 
-METRICS = ["sensitivity", "precision", "f1", "pabak"]
+METRICS = ["sensitivity", "precision", "f1", "jaccard"]
 # PR AUC is added separately because it ranks LLM predictions by coding confidence.
 
 MATCH_PROMPT_TEMPLATE = """You are reconciling two sets of quotes for the SAME \
@@ -665,12 +666,19 @@ def _metrics(tp: int, fp: int, fn: int) -> dict:
         fp: Number of LLM only instances.
         fn: Number of human only instances.
 
+    Jaccard (tp / union) is reported rather than a chance-corrected coefficient.
+    Chance correction requires the full contingency table, and true negatives
+    are undefined at span level: the set of spans neither rater coded is not
+    enumerable. Jaccard is the proportion of all coded instances that both
+    raters agreed on. For chance-corrected agreement, use the document-level
+    metrics built from build_presence_grid, where the unit is fixed and true
+    negatives exist.
+
     Returns:
         Dictionary containing the input counts, union count, sensitivity,
-        precision, F1, and PABAK. Metrics with zero denominators are None.
+        precision, F1, and Jaccard. Metrics with zero denominators are None.
     """
     union = tp + fp + fn
-    observed_agreement = tp / union if union else None
     return {
         "tp": tp,
         "fp": fp,
@@ -679,7 +687,7 @@ def _metrics(tp: int, fp: int, fn: int) -> dict:
         "sensitivity": tp / (tp + fn) if tp + fn else None,
         "precision": tp / (tp + fp) if tp + fp else None,
         "f1": 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None,
-        "pabak": None if observed_agreement is None else 2 * observed_agreement - 1,
+        "jaccard": tp / union if union else None,
     }
 
 
@@ -859,12 +867,16 @@ def _weighted_summary(per_doc: pd.DataFrame) -> pd.DataFrame:
 
 def compute_summary_tables(
     df: pd.DataFrame,
+    output_dir: Path | str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Compute summary tables from row level comparison results.
 
     Args:
     ----
         df: Comparison DataFrame returned by compare_results.
+        output_dir: Optional directory to write the three tables into, as
+            ``span_per_doc.csv``, ``span_concatenated.csv``, and
+            ``span_weighted.csv``. Created if it does not exist.
 
     Returns:
     -------
@@ -944,7 +956,37 @@ def compute_summary_tables(
                     pd.to_numeric(table[metric], errors="coerce"), 4
                 )
 
+    if output_dir is not None:
+        _save_tables(
+            output_dir,
+            {
+                "span_per_doc": per_doc,
+                "span_concatenated": concatenated,
+                "span_weighted": weighted,
+            },
+        )
+
     return per_doc, concatenated, weighted
+
+
+def _save_tables(output_dir: Path | str, tables: dict[str, pd.DataFrame]) -> Path:
+    """Write named tables as CSVs into a directory, creating it if needed.
+
+    Args:
+    ----
+        output_dir: Destination directory.
+        tables: Mapping of file stem to DataFrame.
+
+    Returns:
+    -------
+        The directory written to.
+
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for stem, table in tables.items():
+        table.to_csv(out_dir / f"{stem}.csv", index=False)
+    return out_dir
 
 
 def _format_range(row: pd.Series, metric: str) -> str:
@@ -954,8 +996,8 @@ def _format_range(row: pd.Series, metric: str) -> str:
     ----
         row: Weighted summary row containing median, minimum, and maximum
             columns for the metric.
-        metric: Base metric name, such as sensitivity, precision, f1, pabak,
-            or pr_auc.
+        metric: Base metric name, such as sensitivity, precision, f1,
+            jaccard, or pr_auc.
 
     Returns:
     -------
@@ -1053,7 +1095,7 @@ def refine_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
     codebook: dict,
-    pabak_threshold: float = 0.8,
+    jaccard_threshold: float = 0.9,
     n_examples: int | str = 50,
     n_counterexamples: int | str = 50,
     seed: int = 0,
@@ -1071,7 +1113,8 @@ def refine_codebook(
         concatenated_summary: Concatenated summary from compute_summary_tables,
             with ``construct`` and ``pabak`` columns.
         codebook: Codebook envelope (or flat mapping) to refine.
-        pabak_threshold: Constructs with PABAK strictly below this are refined.
+        jaccard_threshold: Constructs with Jaccard strictly below this are
+            refined.
         n_examples: Maximum number of new example quotes (false negatives) to add
             per construct. An integer greater than 0 caps additions to a random
             sample of that many; the string "all" adds every new example.
@@ -1097,9 +1140,9 @@ def refine_codebook(
     underperforming = {
         str(row.construct)
         for row in summary.itertuples()
-        if row.pabak is not None
-        and not pd.isna(row.pabak)
-        and float(row.pabak) < pabak_threshold
+        if row.jaccard is not None
+        and not pd.isna(row.jaccard)
+        and float(row.jaccard) < jaccard_threshold
     }
 
     changed: dict = {}
@@ -1164,7 +1207,7 @@ def optimize_codebook(
     analyze_kwargs: dict,
     base_name: str,
     output_dir: Path | str = ".",
-    pabak_threshold: float = 0.8,
+    jaccard_threshold: float = 0.9,
     n_examples: int | str = 50,
     n_counterexamples: int | str = 50,
     seed: int = 0,
@@ -1173,7 +1216,7 @@ def optimize_codebook(
     """Iteratively refine the poorly performing constructs in a codebook.
 
     Pass 1 uses the supplied comparison table and summary to produce a partial
-    codebook of the constructs below ``pabak_threshold`` (saved as ``v001``).
+    codebook of the constructs below ``jaccard_threshold`` (saved as ``v001``).
     Each additional rerun re-codes the documents using ONLY the previous
     partial, compares against the human data filtered to those same constructs,
     recomputes metrics, and refines again -- focusing the loop ever more tightly
@@ -1200,7 +1243,7 @@ def optimize_codebook(
             simply replays the coding call you used originally.
         base_name: Prefix for saved file names.
         output_dir: Directory to write the versioned partials into.
-        pabak_threshold: Constructs with PABAK strictly below this are refined.
+        jaccard_threshold: Constructs with Jaccard strictly below this are\n            refined.
         n_examples: Max new example quotes to add per construct each pass: a
             positive integer, or "all". Defaults to 50.
         n_counterexamples: Max new counter-example quotes per construct each
@@ -1231,13 +1274,13 @@ def optimize_codebook(
         comparison_df,
         concatenated_summary,
         codebook,
-        pabak_threshold,
+        jaccard_threshold,
         n_examples=n_examples,
         n_counterexamples=n_counterexamples,
         seed=seed,
     )
     if not partial["codebook"]:
-        print("No constructs below the PABAK threshold; nothing to optimize.")
+        print("No constructs below the Jaccard threshold; nothing to optimize.")
         return partials
 
     prev_path = _save(partial, 1)
@@ -1267,7 +1310,7 @@ def optimize_codebook(
             new_comparison,
             new_concat,
             partial,
-            pabak_threshold,
+            jaccard_threshold,
             n_examples=n_examples,
             n_counterexamples=n_counterexamples,
             seed=seed,
@@ -1420,3 +1463,392 @@ def _write_codebook(codebook: dict, output_path: Path | str) -> None:
         json.dumps(codebook, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+def build_presence_grid(
+    comparison_df: pd.DataFrame,
+    presence_threshold: int = 1,
+    output_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """Build the document x construct presence/count grid from a comparison table.
+
+    The comparison table records span-level coding instances. This derives the
+    document-level view needed for chance-corrected agreement statistics: one
+    row per (document, construct) pair, with per-rater instance counts and
+    presence flags. The roster is data-only -- every document in the comparison
+    crossed with every construct either rater used -- so pairs neither rater
+    coded appear as 0/0 rows (the true negatives that span-level metrics cannot
+    provide).
+
+    Presence is a binarization of the counts: a construct counts as present in a
+    document when a rater coded it at least ``presence_threshold`` times. The
+    default of 1 means "coded at all". Raise it to require multiple instances
+    before a construct is considered present (e.g. 2 = at least two instances).
+
+    Args:
+    ----
+        comparison_df: Row-level comparison table from compare_results, with
+            ``doc_id``, ``construct``, and ``status`` columns.
+        presence_threshold: Minimum instance count for a construct to be marked
+            present in a document. Must be a positive integer. Defaults to 1.
+        output_dir: Optional directory to write ``presence_grid.csv`` into.
+            The grid is the only table carrying true negatives, so it is worth
+            keeping alongside the metric tables.
+
+    Returns:
+    -------
+        DataFrame with columns ``doc_id``, ``construct``, ``human_count``,
+        ``llm_count``, ``human_present``, ``llm_present``.
+
+    Raises:
+    ------
+        ValueError: If presence_threshold is not a positive integer.
+
+    """
+    if (
+        not isinstance(presence_threshold, int)
+        or isinstance(presence_threshold, bool)
+        or presence_threshold < 1
+    ):
+        raise ValueError(
+            f"presence_threshold must be a positive integer, got "
+            f"{presence_threshold!r}."
+        )
+    if comparison_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "doc_id",
+                "construct",
+                "human_count",
+                "llm_count",
+                "human_present",
+                "llm_present",
+            ]
+        )
+
+    df = comparison_df.copy()
+    df["human_inst"] = df["status"].isin(["matched", "human_only"]).astype(int)
+    df["llm_inst"] = df["status"].isin(["matched", "llm_only"]).astype(int)
+
+    counts = (
+        df.groupby(["doc_id", "construct"])[["human_inst", "llm_inst"]]
+        .sum()
+        .reset_index()
+        .rename(columns={"human_inst": "human_count", "llm_inst": "llm_count"})
+    )
+
+    # Full data-only roster: all documents x all constructs seen in the data.
+    documents = sorted(df["doc_id"].unique())
+    constructs = sorted(df["construct"].unique())
+    roster = pd.MultiIndex.from_product(
+        [documents, constructs], names=["doc_id", "construct"]
+    ).to_frame(index=False)
+
+    grid = roster.merge(counts, on=["doc_id", "construct"], how="left").fillna(0)
+    grid["human_count"] = grid["human_count"].astype(int)
+    grid["llm_count"] = grid["llm_count"].astype(int)
+    grid["human_present"] = (grid["human_count"] >= presence_threshold).astype(int)
+    grid["llm_present"] = (grid["llm_count"] >= presence_threshold).astype(int)
+
+    if output_dir is not None:
+        _save_tables(output_dir, {"presence_grid": grid})
+    return grid
+
+
+def compute_binary_metrics(
+    grid: pd.DataFrame,
+    output_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """Compute document-level detection agreement from a presence grid.
+
+    Reads the ``human_present`` / ``llm_present`` flags: did each rater code
+    this construct in this document at all? Because the grid crosses every
+    document with every construct, pairs neither rater coded are true
+    negatives, so the full 2x2 is available and chance-corrected coefficients
+    are definable -- unlike at span level, where TN is undefined.
+
+    Reports the 2x2 counts, the classification metrics computed from them, and
+    the two chance-corrected coefficients that operate on nominal data.
+
+    Note that ``pabak`` here is standard PABAK (2 * observed agreement - 1,
+    with observed agreement including true negatives). The span-level tables
+    report ``jaccard`` instead, which is a different statistic on a different
+    unit; the two are not comparable.
+
+    On a sparse grid, ``pabak`` and the raw agreement it derives from are
+    inflated by true negatives: a model that codes nothing still scores well.
+    Read them alongside ``cohens_kappa`` and the presence counts.
+
+    Args:
+    ----
+        grid: Output of build_presence_grid.
+        output_dir: Optional directory to write ``doc_binary.csv`` into.
+
+    Returns:
+    -------
+        DataFrame with one row per construct plus a pooled ``Overall`` row.
+
+    """
+    columns = [
+        "construct",
+        "n_docs",
+        "human_present",
+        "llm_present",
+        "tp",
+        "fp",
+        "fn",
+        "tn",
+        "sensitivity",
+        "precision",
+        "f1",
+        "pabak",
+        "cohens_kappa",
+        "kripp_alpha_nominal",
+    ]
+    if grid.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+    for construct, group in _grid_groups(grid):
+        human = group["human_present"].to_numpy()
+        llm = group["llm_present"].to_numpy()
+        rows.append(
+            {
+                "construct": construct,
+                "n_docs": group["doc_id"].nunique(),
+                "human_present": int(group["human_present"].sum()),
+                "llm_present": int(group["llm_present"].sum()),
+                **_confusion_scores(human, llm),
+                "cohens_kappa": _safe_kappa(human, llm, weights=None),
+                "kripp_alpha_nominal": _safe_alpha(human, llm, level="nominal"),
+            }
+        )
+
+    table = pd.DataFrame(rows, columns=columns)
+    if output_dir is not None:
+        _save_tables(output_dir, {"doc_binary": table})
+    return table
+
+
+def compute_ordinal_metrics(
+    grid: pd.DataFrame,
+    output_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """Compute document-level intensity agreement from a presence grid.
+
+    Reads the ``human_count`` / ``llm_count`` columns: did the raters agree on
+    HOW MANY instances of the construct a document contains? This is a
+    different question from detection, and the two can diverge -- a model can
+    identify the right constructs while systematically over- or under-counting.
+
+    The count summary columns are reported alongside the coefficients because
+    they determine whether the coefficients mean anything. If a rater's counts
+    never exceed 1, there is no intensity variation to measure. That happens
+    when the coding is document-level presence rather than span-level: the
+    source data records THAT a construct appeared, not HOW OFTEN. The metrics
+    will still compute, so check ``human_count_max`` and ``llm_count_max``
+    before interpreting them.
+
+    Args:
+    ----
+        grid: Output of build_presence_grid.
+        output_dir: Optional directory to write ``doc_ordinal.csv`` into.
+
+    Returns:
+    -------
+        DataFrame with one row per construct plus a pooled ``Overall`` row.
+
+    """
+    columns = [
+        "construct",
+        "n_docs",
+        "human_count_max",
+        "llm_count_max",
+        "human_count_mean",
+        "llm_count_mean",
+        "weighted_kappa",
+        "icc_2_1",
+        "kripp_alpha_ordinal",
+    ]
+    if grid.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+    for construct, group in _grid_groups(grid):
+        human = group["human_count"].to_numpy()
+        llm = group["llm_count"].to_numpy()
+        rows.append(
+            {
+                "construct": construct,
+                "n_docs": group["doc_id"].nunique(),
+                "human_count_max": int(human.max()),
+                "llm_count_max": int(llm.max()),
+                "human_count_mean": round(float(human.mean()), 4),
+                "llm_count_mean": round(float(llm.mean()), 4),
+                "weighted_kappa": _safe_kappa(human, llm, weights="linear"),
+                "icc_2_1": _icc_2_1(human, llm),
+                "kripp_alpha_ordinal": _safe_alpha(human, llm, level="ordinal"),
+            }
+        )
+
+    table = pd.DataFrame(rows, columns=columns)
+    if output_dir is not None:
+        _save_tables(output_dir, {"doc_ordinal": table})
+    return table
+
+
+def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
+    """Compute both document-level metric families in one table.
+
+    Deprecated. Retained so existing notebooks keep working. Prefer
+    compute_binary_metrics and compute_ordinal_metrics, which separate
+    detection agreement from intensity agreement and report the counts needed
+    to interpret each.
+
+    Args:
+    ----
+        grid: Output of build_presence_grid.
+
+    Returns:
+    -------
+        DataFrame with the original nine columns.
+
+    """
+    columns = [
+        "construct",
+        "n_docs",
+        "human_present",
+        "llm_present",
+        "cohens_kappa",
+        "weighted_kappa",
+        "icc_2_1",
+        "kripp_alpha_nominal",
+        "kripp_alpha_ordinal",
+    ]
+    if grid.empty:
+        return pd.DataFrame(columns=columns)
+
+    binary = compute_binary_metrics(grid)
+    ordinal = compute_ordinal_metrics(grid)
+    merged = binary.merge(
+        ordinal[["construct", "weighted_kappa", "icc", "kripp_alpha_ordinal"]],
+        on="construct",
+        how="left",
+    )
+    return merged[columns]
+
+
+def _grid_groups(grid: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
+    """Return per-construct groups plus a pooled ``Overall`` group."""
+    groups: list[tuple[str, pd.DataFrame]] = [
+        (str(construct), group) for construct, group in grid.groupby("construct")
+    ]
+    groups.append(("Overall", grid))
+    return groups
+
+
+def _confusion_scores(
+    human_presence: "np.ndarray",
+    llm_presence: "np.ndarray",
+) -> dict:
+    """Document-level 2x2 counts and the classification metrics from them.
+
+    True negatives exist here because the grid is a full document x construct
+    roster, so ``pabak`` is standard PABAK rather than the overlap-based
+    ``jaccard`` reported at span level.
+    """
+    human = np.asarray(human_presence)
+    llm = np.asarray(llm_presence)
+    tp = int(((human == 1) & (llm == 1)).sum())
+    fp = int(((human == 0) & (llm == 1)).sum())
+    fn = int(((human == 1) & (llm == 0)).sum())
+    tn = int(((human == 0) & (llm == 0)).sum())
+    total = tp + fp + fn + tn
+    observed = (tp + tn) / total if total else None
+
+    def _round(value: float | None) -> float | None:
+        return None if value is None else round(value, 4)
+
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
+        "sensitivity": _round(tp / (tp + fn)) if tp + fn else None,
+        "precision": _round(tp / (tp + fp)) if tp + fp else None,
+        "f1": _round(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else None,
+        "pabak": _round(2 * observed - 1) if observed is not None else None,
+    }
+
+
+def _safe_kappa(
+    ratings_a: "np.ndarray",
+    ratings_b: "np.ndarray",
+    weights: str | None,
+) -> float:
+    """Cohen's kappa that returns NaN where the statistic is undefined."""
+    if len(ratings_a) == 0:
+        return float("nan")
+    # Constant ratings on either side leave no variance to chance-correct.
+    if len(np.unique(ratings_a)) < 2 or len(np.unique(ratings_b)) < 2:
+        return float("nan")
+    try:
+        return round(float(cohen_kappa_score(ratings_a, ratings_b, weights=weights)), 4)
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def _safe_alpha(
+    ratings_a: "np.ndarray",
+    ratings_b: "np.ndarray",
+    level: str,
+) -> float:
+    """Krippendorff's alpha that returns NaN where the statistic is undefined."""
+    if len(ratings_a) == 0:
+        return float("nan")
+    data = np.vstack([ratings_a, ratings_b]).astype(float)
+    # Alpha is undefined when every rating in the matrix is identical.
+    if len(np.unique(data)) < 2:
+        return float("nan")
+    try:
+        return round(
+            float(
+                krippendorff.alpha(reliability_data=data, level_of_measurement=level)
+            ),
+            4,
+        )
+    except (ValueError, ZeroDivisionError):
+        return float("nan")
+
+
+def _icc_2_1(ratings_a: "np.ndarray", ratings_b: "np.ndarray") -> float:
+    """ICC(2,1): two-way random effects, absolute agreement, single measure.
+
+    Computed from the classic mean-squares decomposition (Shrout & Fleiss,
+    1979) for n subjects x k=2 raters. Returns NaN where undefined (fewer than
+    two subjects, or zero variance everywhere).
+    """
+    n = len(ratings_a)
+    if n < 2:
+        return float("nan")
+
+    data = np.vstack([ratings_a, ratings_b]).astype(float).T  # n subjects x 2
+    k = 2
+
+    grand_mean = data.mean()
+    subject_means = data.mean(axis=1)
+    rater_means = data.mean(axis=0)
+
+    ss_total = ((data - grand_mean) ** 2).sum()
+    ss_subjects = k * ((subject_means - grand_mean) ** 2).sum()
+    ss_raters = n * ((rater_means - grand_mean) ** 2).sum()
+    ss_error = ss_total - ss_subjects - ss_raters
+
+    ms_subjects = ss_subjects / (n - 1)
+    ms_raters = ss_raters / (k - 1)
+    ms_error = ss_error / ((n - 1) * (k - 1))
+
+    denominator = ms_subjects + (k - 1) * ms_error + (k / n) * (ms_raters - ms_error)
+    if denominator == 0 or np.isnan(denominator):
+        return float("nan")
+    return round(float((ms_subjects - ms_error) / denominator), 4)

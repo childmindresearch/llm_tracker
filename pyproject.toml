@@ -26,6 +26,7 @@ python-dotenv = "^1.0.0"
 scikit-learn = "^1.0"
 pandas = ">=2.0,<3"
 numpy = "^1.26"
+krippendorff = "^0.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

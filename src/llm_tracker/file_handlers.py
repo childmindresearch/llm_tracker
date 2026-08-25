@@ -689,6 +689,208 @@ def load_human_coding(
     )
 
 
+def _read_table(path: Path, **read_kwargs) -> pd.DataFrame:
+    """Read a CSV, TSV, XLSX, or XLS file into a DataFrame.
+
+    Args:
+    ----
+        path: Path to the file.
+        **read_kwargs: Additional keyword arguments passed to pandas.
+
+    Returns:
+    -------
+        The loaded DataFrame.
+
+    Raises:
+    ------
+        FileLoadError: If the file is missing, unsupported, or cannot be read.
+
+    """
+    if not path.exists():
+        raise FileLoadError(f"File not found: {path}")
+
+    suffix = path.suffix.lower()
+    if suffix not in {".csv", ".tsv", ".xlsx", ".xls"}:
+        raise FileLoadError(
+            f"Unsupported file extension '{suffix}'. "
+            "Supported: ['.csv', '.tsv', '.xlsx', '.xls']"
+        )
+
+    try:
+        if suffix == ".csv":
+            return pd.read_csv(path, **read_kwargs)
+        if suffix == ".tsv":
+            return pd.read_csv(path, sep="\t", **read_kwargs)
+        return pd.read_excel(path, **read_kwargs)
+    except Exception as e:
+        raise FileLoadError(f"Could not read {path}: {e}") from e
+
+
+def melt_wide_coding(
+    df: pd.DataFrame,
+    *,
+    doc_id_col: str,
+    text_col: str,
+    construct_cols: list[str] | None = None,
+    construct_suffix: str = "_score",
+    presence_threshold: float = 1.0,
+) -> pd.DataFrame:
+    """Reshape a wide coded DataFrame into the long form the loaders read.
+
+    Wide coding puts one row per document and one column per construct, with a
+    score in each cell. This melts it to one row per coded document-construct
+    pair, which is the shape ``load_human_dataframe`` expects.
+
+    Construct names come from the column headers with ``construct_suffix``
+    stripped, so they match codebook entries. Names are never split on a
+    separator, so construct names containing commas survive intact.
+
+    Args:
+    ----
+        df: Wide DataFrame, one row per document.
+        doc_id_col: Column holding the document identifier.
+        text_col: Column holding the document text.
+        construct_cols: Construct columns to melt. Defaults to every column
+            ending in ``construct_suffix``.
+        construct_suffix: Suffix stripped from column headers to give the
+            construct name. Pass "" to use headers unchanged.
+        presence_threshold: Lowest score that counts as coded. Cells below this
+            are dropped. Defaults to 1.0. Lower it to accept partial scores,
+            such as the 0.5 produced by averaging two coders.
+
+    Returns:
+    -------
+        Long DataFrame with ``document_id``, ``construct``, ``quote``, and
+        ``score`` columns.
+
+    Raises:
+    ------
+        FileLoadError: If required columns are missing or no construct columns
+            are found.
+
+    """
+    missing = [c for c in (doc_id_col, text_col) if c not in df.columns]
+    if missing:
+        raise FileLoadError(
+            f"DataFrame is missing required columns: {missing}. "
+            f"Found columns: {list(df.columns)}"
+        )
+
+    if construct_cols is None:
+        construct_cols = [
+            c for c in df.columns if construct_suffix and c.endswith(construct_suffix)
+        ]
+    if not construct_cols:
+        raise FileLoadError(
+            f"No construct columns found. Looked for columns ending in "
+            f"'{construct_suffix}'; pass construct_cols explicitly if your "
+            f"columns are named differently."
+        )
+    unknown = [c for c in construct_cols if c not in df.columns]
+    if unknown:
+        raise FileLoadError(f"Construct columns not found: {unknown}")
+
+    frame = df.dropna(subset=[doc_id_col, text_col]).copy()
+    frame[text_col] = frame[text_col].astype(str)
+
+    long_df = frame.melt(
+        id_vars=[doc_id_col, text_col],
+        value_vars=construct_cols,
+        var_name="construct",
+        value_name="score",
+    )
+    long_df["score"] = pd.to_numeric(long_df["score"], errors="coerce")
+    long_df = long_df[long_df["score"] >= presence_threshold]
+
+    if construct_suffix:
+        long_df["construct"] = long_df["construct"].str.replace(
+            f"{construct_suffix}$", "", regex=True
+        )
+
+    result = pd.DataFrame(
+        {
+            "document_id": long_df[doc_id_col].astype(str).str.strip(),
+            "construct": long_df["construct"],
+            "quote": long_df[text_col],
+            "score": long_df["score"],
+        }
+    )
+    return result.sort_values(["document_id", "construct"]).reset_index(drop=True)
+
+
+def load_human_wide(
+    path: Path | str,
+    *,
+    doc_id_col: str,
+    text_col: str,
+    construct_cols: list[str] | None = None,
+    construct_suffix: str = "_score",
+    presence_threshold: float = 1.0,
+    output_path: Path | str | None = None,
+    **read_kwargs,
+) -> dict[str, AnalysisResult]:
+    """Load human coded data from a wide file, one column per construct.
+
+    The counterpart to ``load_human_coding``, which reads long files with one
+    row per coded excerpt. Wide files record document-level presence: whether a
+    construct appears, not where or how many times. Every instance for a
+    document therefore carries the whole document text as its quote, and no
+    character range.
+
+    That has a consequence worth knowing: instance counts derived from this
+    data can never exceed 1, so the ordinal document-level metrics
+    (``compute_ordinal_metrics``) have no intensity variation to measure. The
+    binary metrics are unaffected.
+
+    Args:
+    ----
+        path: Path to a CSV, TSV, XLSX, or XLS file.
+        doc_id_col: Column holding the document identifier.
+        text_col: Column holding the document text.
+        construct_cols: Construct columns to melt. Defaults to every column
+            ending in ``construct_suffix``.
+        construct_suffix: Suffix stripped from column headers to give the
+            construct name. Pass "" to use headers unchanged.
+        presence_threshold: Lowest score that counts as coded. Defaults to 1.0.
+        output_path: Optional path to save the melted long table to, useful for
+            inspecting what the melt produced.
+        **read_kwargs: Additional keyword arguments passed to pandas.
+
+    Returns:
+    -------
+        Human coding results keyed by document ID.
+
+    Raises:
+    ------
+        FileLoadError: If the file cannot be read or required columns are
+            missing.
+
+    """
+    df = _read_table(Path(path), **read_kwargs)
+    long_df = melt_wide_coding(
+        df,
+        doc_id_col=doc_id_col,
+        text_col=text_col,
+        construct_cols=construct_cols,
+        construct_suffix=construct_suffix,
+        presence_threshold=presence_threshold,
+    )
+
+    if output_path is not None:
+        long_df.to_csv(output_path, index=False)
+
+    # One construct per row after melting, so splitting could only fragment
+    # names that contain the separator.
+    return load_human_dataframe(
+        long_df,
+        doc_id_col="document_id",
+        quote_col="quote",
+        range_col=None,
+        construct_col="construct",
+        construct_separator="\x00",
+    )
+
+
 def load_error_records(output_dir: Path | str) -> list[ErrorRecord]:
     """Load saved error records from an analyzer output directory.
 
