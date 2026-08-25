@@ -231,6 +231,51 @@ def _to_dict(obj: object) -> dict | None:
         return None
 
 
+_CLIENT_CACHE: dict[tuple[str, str], AnyLLM] = {}
+
+
+def _get_client(config: AnalyzerConfig) -> AnyLLM:
+    """Return a cached client for this provider and API key.
+
+    any-llm creates a fresh event loop for every synchronous request, and each
+    client owns an httpx connection pool that is closed asynchronously. Building
+    a client per call therefore leaves an orphaned close task behind each time,
+    which surfaces as "Task exception was never retrieved" / "Event loop is
+    closed" tracebacks after a run. Reusing one client also avoids repeating the
+    TCP and TLS handshake for every document.
+
+    The cache is keyed on provider and API key, so analyzers configured with
+    different credentials do not share a client. Because a cached client lives
+    for the life of the process, mutating ``config.api_key`` in place after a
+    request will not take effect; build a new AnalyzerConfig instead.
+
+    Args:
+    ----
+        config: Configuration providing the provider id and API key.
+
+    Returns:
+    -------
+        A client for the configured provider.
+
+    """
+    key = (config.provider, config.api_key or "")
+    client = _CLIENT_CACHE.get(key)
+    if client is None:
+        client = AnyLLM.create(config.provider, api_key=config.api_key)
+        _CLIENT_CACHE[key] = client
+    return client
+
+
+def reset_client_cache() -> None:
+    """Discard all cached provider clients.
+
+    Call this if a client ends up in a bad state -- for example after a
+    connection error, or if the event loop it was created on has been torn
+    down. The next request rebuilds the client it needs.
+    """
+    _CLIENT_CACHE.clear()
+
+
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
     """Make a chat completion request through any-llm.
 
@@ -266,9 +311,12 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
     start_time = time.time()
 
     try:
-        client = AnyLLM.create(config.provider, api_key=config.api_key)
+        client = _get_client(config)
         response = client.completion(**request_kwargs)
     except Exception as e:  # noqa: BLE001 - normalize all provider errors
+        # A failed request may have left the cached client's connection pool
+        # unusable, so drop it rather than reusing it for the retry.
+        _CLIENT_CACHE.pop((config.provider, config.api_key or ""), None)
         raise PromptingError(f"API request failed: {e}") from e
 
     latency_ms = (time.time() - start_time) * 1000
