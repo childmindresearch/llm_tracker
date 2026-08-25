@@ -1667,7 +1667,7 @@ def compute_ordinal_metrics(
         "human_count_mean",
         "llm_count_mean",
         "weighted_kappa",
-        "icc",
+        "icc_2_1",
         "kripp_alpha_ordinal",
     ]
     if grid.empty:
@@ -1686,7 +1686,7 @@ def compute_ordinal_metrics(
                 "human_count_mean": round(float(human.mean()), 4),
                 "llm_count_mean": round(float(llm.mean()), 4),
                 "weighted_kappa": _safe_kappa(human, llm, weights="linear"),
-                "icc": _icc_2_1(human, llm),
+                "icc_2_1": _icc_2_1(human, llm),
                 "kripp_alpha_ordinal": _safe_alpha(human, llm, level="ordinal"),
             }
         )
@@ -1721,7 +1721,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
         "llm_present",
         "cohens_kappa",
         "weighted_kappa",
-        "icc",
+        "icc_2_1",
         "kripp_alpha_nominal",
         "kripp_alpha_ordinal",
     ]
