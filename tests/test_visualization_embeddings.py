@@ -4,7 +4,6 @@ import math
 
 import numpy as np
 import pandas as pd
-
 from llm_tracker.visualization import embeddings
 
 

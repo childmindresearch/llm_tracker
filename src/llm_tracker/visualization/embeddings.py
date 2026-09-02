@@ -92,9 +92,7 @@ def _format_examples(quotes: list[str]) -> str:
     return "\n".join(f'"{quote}"' for quote in quotes)
 
 
-def _build_caption(
-    method: str, n: int, model_name: str, random_state: int
-) -> str:
+def _build_caption(method: str, n: int, model_name: str, random_state: int) -> str:
     """Describe how the examples in the table were chosen."""
     ranking = (
         "Constructs are ranked by the percentage of coded instances they account for."
