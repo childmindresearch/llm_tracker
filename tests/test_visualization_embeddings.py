@@ -44,6 +44,11 @@ def coding_table(pairs: list[tuple[str, str]]) -> pd.DataFrame:
     )
 
 
+def examples_of(table: pd.DataFrame, row: int = 0) -> str:
+    """The examples cell of one row, narrowed to str for the type checker."""
+    return str(table.loc[row, "examples"])
+
+
 def test_empty_table_returns_expected_columns() -> None:
     table = embeddings.examples(coding_table([]), output_dir=None)
 
@@ -83,7 +88,7 @@ def test_centroid_picks_closest_median_and_furthest() -> None:
 
     table = embeddings.examples(coding_table(rows), encoder=encoder, output_dir=None)
 
-    assert table.loc[0, "examples"] == '"a9"\n"a3"\n"a60"'
+    assert examples_of(table) == '"a9"\n"a3"\n"a60"'
 
 
 def test_fewer_quotes_than_requested_returns_all_without_repeats() -> None:
@@ -93,7 +98,7 @@ def test_fewer_quotes_than_requested_returns_all_without_repeats() -> None:
     table = embeddings.examples(coding_table(rows), encoder=encoder, output_dir=None)
 
     assert table.loc[0, "N"] == 2
-    assert table.loc[0, "examples"].count("\n") == 1
+    assert examples_of(table).count("\n") == 1
 
 
 def test_duplicate_quotes_are_deduplicated_before_selection() -> None:
@@ -102,7 +107,7 @@ def test_duplicate_quotes_are_deduplicated_before_selection() -> None:
 
     table = embeddings.examples(coding_table(rows), encoder=encoder, output_dir=None)
 
-    quotes = table.loc[0, "examples"].split("\n")
+    quotes = examples_of(table).split("\n")
     assert table.loc[0, "N"] == 5
     assert len(set(quotes)) == 3
 
@@ -117,8 +122,8 @@ def test_random_method_is_reproducible_and_needs_no_encoder() -> None:
         coding_table(rows), method="random", random_state=7, output_dir=None
     )
 
-    assert first.loc[0, "examples"] == second.loc[0, "examples"]
-    assert len(first.loc[0, "examples"].split("\n")) == 3
+    assert examples_of(first) == examples_of(second)
+    assert len(examples_of(first).split("\n")) == 3
 
 
 def test_n_controls_how_many_examples_are_returned() -> None:
@@ -130,7 +135,7 @@ def test_n_controls_how_many_examples_are_returned() -> None:
     )
 
     expected = ['"a9"', '"a6"', '"a3"', '"a0"', '"a60"']
-    assert table.loc[0, "examples"].split("\n") == expected
+    assert examples_of(table).split("\n") == expected
 
 
 def test_caption_is_written_to_output_dir_and_names_the_model(tmp_path) -> None:  # noqa: ANN001
