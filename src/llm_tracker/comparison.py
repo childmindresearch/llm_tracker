@@ -1111,7 +1111,7 @@ def refine_codebook(
     ----
         comparison_df: Row-level comparison table from compare_results.
         concatenated_summary: Concatenated summary from compute_summary_tables,
-            with ``construct`` and ``pabak`` columns.
+            with ``construct`` and ``jaccard`` columns.
         codebook: Codebook envelope (or flat mapping) to refine.
         jaccard_threshold: Constructs with Jaccard strictly below this are
             refined.
@@ -1149,8 +1149,8 @@ def refine_codebook(
     for construct in underperforming:
         if construct not in constructs:
             print(
-                f"Skipping '{construct}': below PABAK threshold but not present "
-                f"in the codebook."
+                f"Skipping '{construct}': below the Jaccard threshold but not "
+                f"present in the codebook."
             )
             continue
 
@@ -1197,13 +1197,62 @@ def refine_codebook(
     return {"metadata": partial_meta, "codebook": changed}
 
 
+def _recode(
+    analyzer: "LLMTrackerAnalyzer",
+    path: Path | str,
+    codebook_path: Path | str,
+    analyze_kwargs: dict,
+) -> tuple:
+    """Re-code a corpus, dispatching on whether the path is a directory or CSV.
+
+    Args:
+    ----
+        analyzer: Analyzer used to code the documents.
+        path: A directory of documents, or a .csv file.
+        codebook_path: Codebook to code against.
+        analyze_kwargs: Extra keyword arguments for the coding call.
+
+    Returns:
+    -------
+        The analyzer's (results, metadata, errors) tuple.
+
+    Raises:
+    ------
+        FileNotFoundError: If the path does not exist.
+        ValueError: If the path is neither a directory nor a .csv file.
+
+    """
+    resolved = Path(path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"Path not found: {resolved}")
+
+    if resolved.is_dir():
+        return analyzer.analyze_directory(
+            input_dir=resolved,
+            codebook_path=codebook_path,
+            **analyze_kwargs,
+        )
+
+    if resolved.suffix.lower() == ".csv":
+        return analyzer.analyze_csv(
+            csv_path=resolved,
+            codebook_path=codebook_path,
+            **analyze_kwargs,
+        )
+
+    raise ValueError(
+        f"Unsupported input: {resolved}. Provide a directory of documents or "
+        f"a .csv file."
+    )
+
+
 def optimize_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
     codebook: dict,
     human_results: dict,
     analyzer: "LLMTrackerAnalyzer",
-    csv_path: Path | str,
+    path: Path | str,
     analyze_kwargs: dict,
     base_name: str,
     output_dir: Path | str = ".",
@@ -1236,11 +1285,15 @@ def optimize_codebook(
             filtered to the flagged constructs, for re-comparison each rerun.
         analyzer: An LLMTrackerAnalyzer used to re-code each rerun. Its config
             also drives the matcher used for re-comparison.
-        csv_path: The CSV of documents to re-code (the same corpus each pass).
-        analyze_kwargs: Keyword arguments forwarded to analyzer.analyze_csv each
-            rerun (e.g. {"text_column": "post"} plus whatever document-ID columns
-            that corpus uses). The loop makes no assumptions about the schema; it
-            simply replays the coding call you used originally.
+        path: The corpus to re-code each pass. A directory is re-coded with
+            analyze_directory, a .csv file with analyze_csv, matching how
+            discover() detects its input.
+        analyze_kwargs: Keyword arguments forwarded to the coding call each
+            rerun. For a CSV, include text_column and any id_column you used
+            (e.g. {"text_column": "post", "id_column": "ID"}). For a directory,
+            usually {} -- documents are identified by filename. The loop makes
+            no assumptions about the schema; it simply replays the coding call
+            you used originally.
         base_name: Prefix for saved file names.
         output_dir: Directory to write the versioned partials into.
         jaccard_threshold: Constructs with Jaccard strictly below this are\n            refined.
@@ -1293,10 +1346,8 @@ def optimize_codebook(
         version = i + 2  # v002, v003, ...
 
         # Re-code using ONLY the previous partial codebook.
-        llm_results, _meta, _errors = analyzer.analyze_csv(
-            csv_path=csv_path,
-            codebook_path=prev_path,
-            **analyze_kwargs,
+        llm_results, _meta, _errors = _recode(
+            analyzer, path, prev_path, analyze_kwargs
         )
 
         # Compare against human data filtered to the partial's constructs.
@@ -1731,7 +1782,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
     binary = compute_binary_metrics(grid)
     ordinal = compute_ordinal_metrics(grid)
     merged = binary.merge(
-        ordinal[["construct", "weighted_kappa", "icc", "kripp_alpha_ordinal"]],
+        ordinal[["construct", "weighted_kappa", "icc_2_1", "kripp_alpha_ordinal"]],
         on="construct",
         how="left",
     )
@@ -1851,4 +1902,4 @@ def _icc_2_1(ratings_a: "np.ndarray", ratings_b: "np.ndarray") -> float:
     denominator = ms_subjects + (k - 1) * ms_error + (k / n) * (ms_raters - ms_error)
     if denominator == 0 or np.isnan(denominator):
         return float("nan")
-    return round(float((ms_subjects - ms_error) / denominator), 4)
+    return round(float((ms_subjects - ms_error) / denominator), 4)S
