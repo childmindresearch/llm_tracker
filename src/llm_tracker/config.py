@@ -1,5 +1,6 @@
 """Configuration and constants for llm_tracker package."""
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,6 +115,8 @@ class AnalyzerConfig:
             default; set 0 for (best-effort) deterministic output.
         fuzzy_quote_matching: Whether to use fuzzy quote index recovery.
         quote_match_threshold: Minimum fuzzy match score for quote recovery.
+        retry_delay: Initial delay in seconds between failed requests.
+        retry_max_delay: Maximum exponential backoff delay in seconds.
 
     """
 
@@ -126,10 +129,26 @@ class AnalyzerConfig:
     temperature: float | None = 0.0
     fuzzy_quote_matching: bool = False
     quote_match_threshold: float = 0.85
+    retry_delay: float = 1.0
+    retry_max_delay: float = 30.0
 
     def __post_init__(self) -> None:
         """Resolve the API key after dataclass initialization."""
         self.api_key = self._load_api_key()
+        if (
+            not isinstance(self.max_retries, int)
+            or isinstance(self.max_retries, bool)
+            or self.max_retries < 0
+        ):
+            raise ValueError("max_retries must be a nonnegative integer.")
+        for name in ("timeout", "retry_delay", "retry_max_delay"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and nonnegative.")
+        if self.timeout == 0:
+            raise ValueError("timeout must be greater than zero.")
+        if self.retry_max_delay < self.retry_delay:
+            raise ValueError("retry_max_delay must be at least retry_delay.")
 
     def _load_api_key(self) -> str:
         """Load the API key from config, env file, or environment variable.

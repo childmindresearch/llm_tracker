@@ -107,6 +107,9 @@ class APIMetadata(BaseModel):
     error_message: str | None = None
     error_type: str | None = None
     error_output: str | None = None
+    provider: str | None = None
+    http_status: int | None = None
+    finish_reason: str | None = None
 
 
 class ErrorRecord(BaseModel):
@@ -127,3 +130,20 @@ class ErrorRecord(BaseModel):
     error_message: str
     model_used: str = ""
     timestamp: str | None = None
+
+
+class ComparisonFailure(BaseModel):
+    """An unresolved matcher failure for one document and construct.
+
+    This is an operational failure, never evidence of coding disagreement.
+    Attempts counts requests in the most recent attempt to process the pair.
+    """
+
+    document_id: str
+    construct_name: str
+    model_used: str
+    attempts: int = Field(default=0, ge=0)
+    error_message: str
+    error_type: str
+    timestamp: str
+    metadata: APIMetadata | None = None

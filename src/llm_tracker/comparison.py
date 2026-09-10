@@ -1,8 +1,13 @@
 """Compare human and LLM construct codings."""
 
 import copy
+import hashlib
 import json
+import math
+import os
 import random
+import tempfile
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,8 +19,13 @@ from sklearn.metrics import average_precision_score, cohen_kappa_score
 
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import codebook_constructs, ensure_codebook_envelope
-from llm_tracker.models import AnalysisResult, ConstructInstance
-from llm_tracker.prompting import PromptingError, call_llm_api
+from llm_tracker.models import (
+    AnalysisResult,
+    APIMetadata,
+    ComparisonFailure,
+    ConstructInstance,
+)
+from llm_tracker.prompting import PromptingError, call_llm_api, wait_before_retry
 
 if TYPE_CHECKING:
     from llm_tracker.analyzer import LLMTrackerAnalyzer
@@ -76,6 +86,162 @@ If there are no matches, return {{"matches": []}}
 
 class ComparisonError(Exception):
     """Exception raised when comparison fails."""
+
+    def __init__(
+        self, message: str, *, attempts: int = 0, metadata: APIMetadata | None = None
+    ) -> None:
+        """Keep matcher attempt counts and the available provider response."""
+        super().__init__(message)
+        self.attempts = attempts
+        self.metadata = metadata
+
+
+class IncompleteComparisonError(ComparisonError):
+    """Statistics cannot be computed while comparison pairs are unresolved."""
+
+
+def _require_complete(table: pd.DataFrame) -> None:
+    """Reject failure and pending rows, including those reloaded from CSV."""
+    if "status" not in table:
+        return
+    unresolved = table["status"].isin(["comparison_error", "comparison_pending"])
+    if unresolved.any():
+        pairs = table.loc[unresolved, ["doc_id", "construct"]].drop_duplicates()
+        raise IncompleteComparisonError(
+            f"Comparison incomplete: {len(pairs)} document-construct pair(s) "
+            "are unresolved. Resume compare_results with the original inputs "
+            "and resume_from=<saved run directory> before computing statistics "
+            "or optimizing the codebook."
+        )
+
+
+def _atomic_text(path: Path, text: str) -> None:
+    """Replace one checkpoint or output file only after a complete write."""
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False
+        ) as file:
+            temporary = Path(file.name)
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _atomic_json(path: Path, data: object) -> None:
+    """Write a JSON checkpoint atomically."""
+    _atomic_text(path, json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False))
+
+
+def _pair_key(doc_id: str, construct: str) -> str:
+    """Use a safe, unambiguous filename for a document-construct pair."""
+    return hashlib.sha256(json.dumps([doc_id, construct]).encode()).hexdigest()
+
+
+def _comparison_fingerprint(
+    human: dict[str, AnalysisResult],
+    llm: dict[str, AnalysisResult],
+    config: AnalyzerConfig,
+) -> str:
+    """Bind checkpoints to the exact inputs and matcher, excluding credentials.
+
+    Retry and timeout settings may change on resume; matcher settings may not.
+    Instance order is retained because matching uses positional quote indices.
+    """
+    data = {
+        "human": {k: v.model_dump(mode="json") for k, v in human.items()},
+        "llm": {k: v.model_dump(mode="json") for k, v in llm.items()},
+        "provider": config.provider,
+        "model": config.model_name,
+        "temperature": config.temperature,
+        "prompt": MATCH_PROMPT_TEMPLATE,
+        "endpoint": os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
+        if config.provider == "openrouter"
+        else None,
+    }
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+def _open_comparison_run(
+    output_dir: Path | str | None, resume_from: Path | str | None, fingerprint: str
+) -> Path | None:
+    """Create a fresh run or verify an existing checkpoint before any requests."""
+    if output_dir is not None and resume_from is not None:
+        raise ValueError(
+            "Use output_dir for a new run or resume_from for an existing run."
+        )
+    if resume_from is not None:
+        path = Path(resume_from).resolve()
+        try:
+            manifest = json.loads((path / "comparison_manifest.json").read_text())
+        except (OSError, ValueError) as error:
+            raise ComparisonError(
+                f"Cannot load comparison checkpoint: {path}"
+            ) from error
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("version") != 1
+            or manifest.get("fingerprint") != fingerprint
+        ):
+            raise ComparisonError(
+                "Checkpoint inputs or matcher configuration differ from this run. "
+                "Use the original inputs/configuration or start a new run."
+            )
+        return path
+    if output_dir is None:
+        return None
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")
+    path = Path(f"{output_dir}_{timestamp}").resolve()
+    path.mkdir(parents=True, exist_ok=False)
+    (path / "checkpoints").mkdir()
+    _atomic_json(
+        path / "comparison_manifest.json", {"version": 1, "fingerprint": fingerprint}
+    )
+    return path
+
+
+def _load_pair_checkpoint(path: Path, doc_id: str, construct: str) -> dict | None:
+    """Read a pair checkpoint, failing closed on malformed saved data."""
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if record["doc_id"] != doc_id or record["construct"] != construct:
+            raise ValueError("Checkpoint belongs to another pair.")
+        rows = record["rows"]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("Checkpoint has no result rows.")
+        failure = record["failure"]
+        if failure is not None:
+            ComparisonFailure.model_validate(failure)
+        for row in rows:
+            if row["doc_id"] != doc_id or row["construct"] != construct:
+                raise ValueError("Checkpoint row belongs to another pair.")
+            status = row["status"]
+            expected = {
+                "matched": (1, 0, 0),
+                "human_only": (0, 0, 1),
+                "llm_only": (0, 1, 0),
+                "comparison_error": (None, None, None),
+            }[status]
+            if tuple(row[name] for name in ("tp", "fp", "fn")) != expected:
+                raise ValueError("Checkpoint has invalid outcome counts.")
+            if (status == "comparison_error") != (failure is not None):
+                raise ValueError("Checkpoint failure status is inconsistent.")
+        return record
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise ComparisonError(f"Invalid comparison checkpoint: {path}") from error
+
+
+def _unresolved_row(doc_id: str, construct: str, status: str) -> dict:
+    """Represent an unknown outcome with missing counts, never false counts."""
+    row = _base_row(doc_id, construct, status)
+    row.update(tp=None, fp=None, fn=None)
+    return row
 
 
 def _load_result_json(path: Path | str) -> AnalysisResult:
@@ -240,23 +406,32 @@ def _parse_match_response(response_text: str) -> list[dict]:
     """
     try:
         data = json.loads(response_text)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, TypeError) as e:
         raise ComparisonError(f"Invalid matcher JSON: {e}") from e
 
-    matches = data.get("matches")
+    matches = data.get("matches") if isinstance(data, dict) else None
     if not isinstance(matches, list):
         raise ComparisonError("Matcher response must contain a 'matches' list.")
 
     parsed_matches = []
     for match in matches:
         if not isinstance(match, dict):
-            continue
+            raise ComparisonError("Matcher entries must be JSON objects.")
 
         try:
-            human_index = int(match["human_index"])
-            llm_index = int(match["llm_index"])
-            paraphrase = bool(match.get("paraphrase", False))
+            human_index = match["human_index"]
+            llm_index = match["llm_index"]
+            if any(
+                not isinstance(index, int) or isinstance(index, bool)
+                for index in (human_index, llm_index)
+            ):
+                raise ValueError("Quote indices must be integers.")
+            paraphrase = match.get("paraphrase", False)
+            if not isinstance(paraphrase, bool):
+                raise ValueError("Paraphrase must be a boolean.")
             confidence = float(match.get("match_confidence", 0.5))
+            if not math.isfinite(confidence):
+                raise ValueError("Match confidence must be finite.")
             confidence = max(0.0, min(1.0, confidence))
 
             parsed_matches.append(
@@ -267,8 +442,8 @@ def _parse_match_response(response_text: str) -> list[dict]:
                     "match_confidence": confidence,
                 }
             )
-        except (KeyError, TypeError, ValueError):
-            continue
+        except (KeyError, TypeError, ValueError) as error:
+            raise ComparisonError(f"Invalid matcher entry: {match!r}") from error
 
     return parsed_matches
 
@@ -389,12 +564,16 @@ class LLMTrackerComparer:
         match_model: str | None = None,
         config: AnalyzerConfig | None = None,
     ) -> None:
+        """Configure a matcher and initialize its most recent run state."""
         if config is not None:
             self.config = config
         elif match_model is not None:
             self.config = AnalyzerConfig(api_key=api_key, model_name=match_model)
         else:
             self.config = AnalyzerConfig(api_key=api_key)
+        self.errors: list[ComparisonFailure] = []
+        self.output_path: Path | None = None
+        self.last_result: pd.DataFrame | None = None
 
     def _match_construct(
         self,
@@ -426,15 +605,44 @@ class LLMTrackerComparer:
             llm_quotes=_format_quotes(llm),
         )
         last_error = None
+        last_metadata = None
         total_attempts = self.config.max_retries + 1
-        for _ in range(total_attempts):
+        for attempt in range(total_attempts):
+            last_metadata = None
             try:
-                response_text, _metadata = call_llm_api(prompt, self.config)
-                return _parse_match_response(response_text)
+                response_text, last_metadata = call_llm_api(prompt, self.config)
+                matches = _parse_match_response(response_text)
+                used_human: set[int] = set()
+                used_llm: set[int] = set()
+                for match in matches:
+                    h_index, l_index = match["human_index"], match["llm_index"]
+                    if (
+                        not 0 <= h_index < len(human)
+                        or not 0 <= l_index < len(llm)
+                        or h_index in used_human
+                        or l_index in used_llm
+                    ):
+                        raise ComparisonError(
+                            "Matcher returned invalid or duplicate quote indices."
+                        )
+                    used_human.add(h_index)
+                    used_llm.add(l_index)
+                return matches
             except (PromptingError, ComparisonError) as e:
                 last_error = e
+                last_metadata = e.metadata or last_metadata
+                if last_metadata is not None:
+                    last_metadata.num_retries = attempt
+                if isinstance(e, PromptingError) and not e.retryable:
+                    break
+                if attempt < total_attempts - 1:
+                    wait_before_retry(self.config, attempt, e)
 
-        raise ComparisonError(f"Matcher failed for '{construct}': {last_error}")
+        raise ComparisonError(
+            f"Matcher failed for '{construct}': {last_error}",
+            attempts=attempt + 1,
+            metadata=last_metadata,
+        ) from last_error
 
     def _compare_construct(
         self,
@@ -534,25 +742,38 @@ class LLMTrackerComparer:
         self,
         human_results: dict[str, AnalysisResult],
         llm_results: dict[str, AnalysisResult],
-        output_dir: str | None = None,
+        output_dir: Path | str | None = None,
+        *,
+        resume_from: Path | str | None = None,
     ) -> pd.DataFrame:
-        """Compare human and LLM results across all documents.
+        """Compare results, preserving failed pairs as explicit unknown outcomes.
 
         Args:
         ----
             human_results: Human coded results keyed by document ID.
             llm_results: LLM coded results keyed by document ID.
-            output_dir: Optional base name for saving the row level comparison
-                table to a timestamped CSV folder.
+            output_dir: Prefix for a new timestamped run directory. Per-pair
+                checkpoints are written after every comparison. The exact
+                directory is available as ``self.output_path``.
+            resume_from: Existing run directory. Reuses completed pairs and
+                retries failed or interrupted pairs after verifying inputs and
+                matcher settings. Mutually exclusive with output_dir.
 
         Returns:
         -------
-            Comparison DataFrame with one row per matched,
-            human only, or LLM only construct instance.
+            Existing match rows plus one ``comparison_error`` row per failed
+            pair, with missing tp/fp/fn counts. ``self.errors`` contains details.
+            Built-in statistics and optimization reject unresolved rows.
+
+        Raises:
+        ------
+            ComparisonError: If a checkpoint is invalid or belongs to different
+                inputs/settings. Provider/matcher failures are recorded instead.
+            OSError: If progress cannot be saved. An interruption propagates,
+                but completed checkpoints remain available for resume.
 
         """
-        rows = []
-
+        pairs = []
         document_ids = sorted(set(human_results) | set(llm_results))
         for doc_id in document_ids:
             human_result = human_results.get(doc_id)
@@ -565,8 +786,8 @@ class LLMTrackerComparer:
             construct_names = sorted(set(human_by_construct) | set(llm_by_construct))
 
             for construct in construct_names:
-                rows.extend(
-                    self._compare_construct(
+                pairs.append(
+                    (
                         doc_id,
                         construct,
                         human_by_construct.get(construct, []),
@@ -574,11 +795,98 @@ class LLMTrackerComparer:
                     )
                 )
 
-        df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
-        if not df.empty:
-            df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(int)
-        if output_dir:
-            _save_comparison_table(df, output_dir)
+        fingerprint = (
+            _comparison_fingerprint(human_results, llm_results, self.config)
+            if output_dir is not None or resume_from is not None
+            else ""
+        )
+        self.output_path = _open_comparison_run(output_dir, resume_from, fingerprint)
+        self.errors = []
+        records: dict[str, dict] = {}
+        for doc_id, construct, _human, _llm in pairs:
+            key = _pair_key(doc_id, construct)
+            if self.output_path is not None:
+                saved = _load_pair_checkpoint(
+                    self.output_path / "checkpoints" / f"{key}.json", doc_id, construct
+                )
+                if saved is not None:
+                    records[key] = saved
+
+        try:
+            for doc_id, construct, human, llm in pairs:
+                key = _pair_key(doc_id, construct)
+                if key in records and records[key]["failure"] is None:
+                    continue
+                failure = None
+                try:
+                    pair_rows = self._compare_construct(doc_id, construct, human, llm)
+                except ComparisonError as error:
+                    failure = ComparisonFailure(
+                        document_id=doc_id,
+                        construct_name=construct,
+                        model_used=self.config.model_name,
+                        attempts=error.attempts,
+                        error_message=str(error),
+                        error_type=type(error).__name__,
+                        timestamp=datetime.now().isoformat(),
+                        metadata=error.metadata,
+                    ).model_dump(mode="json")
+                    pair_rows = [_unresolved_row(doc_id, construct, "comparison_error")]
+                record = {
+                    "doc_id": doc_id,
+                    "construct": construct,
+                    "rows": pair_rows,
+                    "failure": failure,
+                }
+                records[key] = record
+                if self.output_path is not None:
+                    _atomic_json(
+                        self.output_path / "checkpoints" / f"{key}.json", record
+                    )
+        finally:
+            # Pending rows also survive CSV export, so interrupted work cannot
+            # accidentally become absence/agreement in the presence grid.
+            rows = []
+            self.errors = []
+            for doc_id, construct, _human, _llm in pairs:
+                record = records.get(_pair_key(doc_id, construct))
+                if record is None:
+                    rows.append(
+                        _unresolved_row(doc_id, construct, "comparison_pending")
+                    )
+                else:
+                    rows.extend(record["rows"])
+                    if record["failure"] is not None:
+                        self.errors.append(
+                            ComparisonFailure.model_validate(record["failure"])
+                        )
+            df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
+            if not df.empty:
+                unresolved = df["status"].isin(
+                    ["comparison_error", "comparison_pending"]
+                )
+                df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(
+                    "Int64" if unresolved.any() else int
+                )
+            self.last_result = df
+            if self.output_path is not None:
+                _atomic_text(
+                    self.output_path / "comparison_rows.csv", df.to_csv(index=False)
+                )
+                _atomic_json(
+                    self.output_path / "comparison_errors.json",
+                    [e.model_dump(mode="json") for e in self.errors],
+                )
+
+        if self.errors:
+            warnings.warn(
+                f"Comparison incomplete: {len(self.errors)} pair(s) failed. "
+                "Inspect comparer.errors. Saved run: "
+                f"{self.output_path or 'none (output_dir omitted)'}. "
+                "Statistics and optimization are blocked until these pairs succeed.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         return df
 
     def compare_documents(
@@ -586,6 +894,8 @@ class LLMTrackerComparer:
         human_json: Path | str,
         llm_json: Path | str,
         output_dir: str | None = None,
+        *,
+        resume_from: Path | str | None = None,
     ) -> pd.DataFrame:
         """Compare one reference result JSON with one LLM result JSON.
 
@@ -594,6 +904,7 @@ class LLMTrackerComparer:
             human_json: Path to the reference result JSON file.
             llm_json: Path to the LLM result JSON file.
             output_dir: Optional base name for saving the comparison table.
+            resume_from: Existing comparison run directory to resume.
 
         Returns:
         -------
@@ -613,6 +924,7 @@ class LLMTrackerComparer:
             {doc_id: human_result},
             {doc_id: llm_result},
             output_dir=output_dir,
+            resume_from=resume_from,
         )
 
     def compare_directories(
@@ -620,6 +932,8 @@ class LLMTrackerComparer:
         human_dir: Path | str,
         llm_dir: Path | str,
         output_dir: str | None = None,
+        *,
+        resume_from: Path | str | None = None,
     ) -> pd.DataFrame:
         """Compare reference and LLM result directories.
 
@@ -628,6 +942,7 @@ class LLMTrackerComparer:
             human_dir: Path to a reference result directory or encodings folder.
             llm_dir: Path to an LLM result directory or encodings folder.
             output_dir: Optional base name for saving the comparison table.
+            resume_from: Existing comparison run directory to resume.
 
         Returns:
         -------
@@ -655,6 +970,7 @@ class LLMTrackerComparer:
             human_results,
             llm_results,
             output_dir=output_dir,
+            resume_from=resume_from,
         )
 
 
@@ -729,6 +1045,7 @@ def compute_pr_auc(df: pd.DataFrame) -> dict[str, float | None]:
         prediction and at least one LLM only prediction.
 
     """
+    _require_complete(df)
     if df.empty:
         return {"Overall": None}
 
@@ -804,7 +1121,9 @@ def _weighted_median(values: list[float], weights: list[float]) -> float:
         Weighted median of the input values.
 
     """
-    value_weight_pairs = sorted(zip(values, weights), key=lambda item: item[0])
+    value_weight_pairs = sorted(
+        zip(values, weights, strict=False), key=lambda item: item[0]
+    )
     halfway_weight = sum(weights) / 2
     cumulative_weight = 0.0
 
@@ -887,6 +1206,7 @@ def compute_summary_tables(
             plus overall.
 
     """
+    _require_complete(df)
     if df.empty:
         empty_counts = pd.DataFrame(columns=["doc_id", "construct", "tp", "fp", "fn"])
         return empty_counts, pd.DataFrame(), pd.DataFrame()
@@ -1111,7 +1431,7 @@ def refine_codebook(
     ----
         comparison_df: Row-level comparison table from compare_results.
         concatenated_summary: Concatenated summary from compute_summary_tables,
-            with ``construct`` and ``pabak`` columns.
+            with ``construct`` and ``jaccard`` columns.
         codebook: Codebook envelope (or flat mapping) to refine.
         jaccard_threshold: Constructs with Jaccard strictly below this are
             refined.
@@ -1130,6 +1450,7 @@ def refine_codebook(
         A partial codebook envelope containing only the changed constructs.
 
     """
+    _require_complete(comparison_df)
     _validate_sample_size(n_examples, "n_examples")
     _validate_sample_size(n_counterexamples, "n_counterexamples")
     rng = random.Random(seed)
@@ -1149,8 +1470,8 @@ def refine_codebook(
     for construct in underperforming:
         if construct not in constructs:
             print(
-                f"Skipping '{construct}': below PABAK threshold but not present "
-                f"in the codebook."
+                f"Skipping '{construct}': below the Jaccard threshold but not "
+                f"present in the codebook."
             )
             continue
 
@@ -1197,13 +1518,62 @@ def refine_codebook(
     return {"metadata": partial_meta, "codebook": changed}
 
 
+def _recode(
+    analyzer: "LLMTrackerAnalyzer",
+    path: Path | str,
+    codebook_path: Path | str,
+    analyze_kwargs: dict,
+) -> tuple:
+    """Re-code a corpus, dispatching on whether the path is a directory or CSV.
+
+    Args:
+    ----
+        analyzer: Analyzer used to code the documents.
+        path: A directory of documents, or a .csv file.
+        codebook_path: Codebook to code against.
+        analyze_kwargs: Extra keyword arguments for the coding call.
+
+    Returns:
+    -------
+        The analyzer's (results, metadata, errors) tuple.
+
+    Raises:
+    ------
+        FileNotFoundError: If the path does not exist.
+        ValueError: If the path is neither a directory nor a .csv file.
+
+    """
+    resolved = Path(path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"Path not found: {resolved}")
+
+    if resolved.is_dir():
+        return analyzer.analyze_directory(
+            input_dir=resolved,
+            codebook_path=codebook_path,
+            **analyze_kwargs,
+        )
+
+    if resolved.suffix.lower() == ".csv":
+        return analyzer.analyze_csv(
+            csv_path=resolved,
+            codebook_path=codebook_path,
+            **analyze_kwargs,
+        )
+
+    raise ValueError(
+        f"Unsupported input: {resolved}. Provide a directory of documents or "
+        f"a .csv file."
+    )
+
+
 def optimize_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
     codebook: dict,
     human_results: dict,
     analyzer: "LLMTrackerAnalyzer",
-    csv_path: Path | str,
+    path: Path | str,
     analyze_kwargs: dict,
     base_name: str,
     output_dir: Path | str = ".",
@@ -1236,14 +1606,19 @@ def optimize_codebook(
             filtered to the flagged constructs, for re-comparison each rerun.
         analyzer: An LLMTrackerAnalyzer used to re-code each rerun. Its config
             also drives the matcher used for re-comparison.
-        csv_path: The CSV of documents to re-code (the same corpus each pass).
-        analyze_kwargs: Keyword arguments forwarded to analyzer.analyze_csv each
-            rerun (e.g. {"text_column": "post"} plus whatever document-ID columns
-            that corpus uses). The loop makes no assumptions about the schema; it
-            simply replays the coding call you used originally.
+        path: The corpus to re-code each pass. A directory is re-coded with
+            analyze_directory, a .csv file with analyze_csv, matching how
+            discover() detects its input.
+        analyze_kwargs: Keyword arguments forwarded to the coding call each
+            rerun. For a CSV, include text_column and any id_column you used
+            (e.g. {"text_column": "post", "id_column": "ID"}). For a directory,
+            usually {} -- documents are identified by filename. The loop makes
+            no assumptions about the schema; it simply replays the coding call
+            you used originally.
         base_name: Prefix for saved file names.
         output_dir: Directory to write the versioned partials into.
-        jaccard_threshold: Constructs with Jaccard strictly below this are\n            refined.
+        jaccard_threshold: Constructs with Jaccard strictly below this are
+            refined.
         n_examples: Max new example quotes to add per construct each pass: a
             positive integer, or "all". Defaults to 50.
         n_counterexamples: Max new counter-example quotes per construct each
@@ -1257,6 +1632,7 @@ def optimize_codebook(
         The list of partial codebook envelopes produced (v001, v002, ...).
 
     """
+    _require_complete(comparison_df)
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1293,16 +1669,21 @@ def optimize_codebook(
         version = i + 2  # v002, v003, ...
 
         # Re-code using ONLY the previous partial codebook.
-        llm_results, _meta, _errors = analyzer.analyze_csv(
-            csv_path=csv_path,
-            codebook_path=prev_path,
-            **analyze_kwargs,
-        )
+        llm_results, _meta, _errors = _recode(analyzer, path, prev_path, analyze_kwargs)
+        if _errors:
+            raise IncompleteComparisonError(
+                f"Optimization stopped: {len(_errors)} document(s) failed "
+                "during re-coding. Recover the analyzer errors before comparing."
+            )
 
         # Compare against human data filtered to the partial's constructs.
         flagged = set(partial["codebook"].keys())
         filtered_human = _filter_human_results(human_results, flagged)
-        new_comparison = comparer.compare_results(filtered_human, llm_results)
+        new_comparison = comparer.compare_results(
+            filtered_human,
+            llm_results,
+            output_dir=out_dir / f"{base_name}_comparison_v{version:03d}",
+        )
         _per_doc, new_concat, _weighted = compute_summary_tables(new_comparison)
 
         # Refine again, accumulating onto the previous partial's entries.
@@ -1505,6 +1886,7 @@ def build_presence_grid(
         ValueError: If presence_threshold is not a positive integer.
 
     """
+    _require_complete(comparison_df)
     if (
         not isinstance(presence_threshold, int)
         or isinstance(presence_threshold, bool)
@@ -1589,6 +1971,7 @@ def compute_binary_metrics(
         DataFrame with one row per construct plus a pooled ``Overall`` row.
 
     """
+    _require_complete(grid)
     columns = [
         "construct",
         "n_docs",
@@ -1659,6 +2042,7 @@ def compute_ordinal_metrics(
         DataFrame with one row per construct plus a pooled ``Overall`` row.
 
     """
+    _require_complete(grid)
     columns = [
         "construct",
         "n_docs",
@@ -1714,6 +2098,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
         DataFrame with the original nine columns.
 
     """
+    _require_complete(grid)
     columns = [
         "construct",
         "n_docs",
@@ -1731,7 +2116,7 @@ def compute_agreement_metrics(grid: pd.DataFrame) -> pd.DataFrame:
     binary = compute_binary_metrics(grid)
     ordinal = compute_ordinal_metrics(grid)
     merged = binary.merge(
-        ordinal[["construct", "weighted_kappa", "icc", "kripp_alpha_ordinal"]],
+        ordinal[["construct", "weighted_kappa", "icc_2_1", "kripp_alpha_ordinal"]],
         on="construct",
         how="left",
     )

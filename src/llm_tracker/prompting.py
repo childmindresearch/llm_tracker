@@ -5,10 +5,17 @@ SDK), including constructing prompts, making completion requests, parsing
 responses, and handling retries.
 """
 
+import atexit
 import difflib
 import json
+import math
+import os
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from typing import NoReturn
 
+import httpx
 from any_llm import AnyLLM
 
 from llm_tracker.config import AnalyzerConfig
@@ -18,17 +25,38 @@ from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
 class PromptingError(Exception):
     """Exception raised when prompting fails after all retries."""
 
-    def __init__(self, message: str, metadata: APIMetadata | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        metadata: APIMetadata | None = None,
+        *,
+        retryable: bool = True,
+        retry_after: float | None = None,
+    ) -> None:
         """Create a prompting error.
 
         Args:
         ----
             message: Error message describing the failure.
             metadata: Optional API metadata captured before the failure.
+            retryable: Whether repeating the request may recover the failure.
+            retry_after: Provider-requested minimum retry delay in seconds.
 
         """
         super().__init__(message)
         self.metadata = metadata
+        self.retryable = retryable
+        self.retry_after = retry_after
+
+
+def wait_before_retry(config: AnalyzerConfig, attempt: int, error: Exception) -> None:
+    """Wait with capped exponential backoff, honoring a longer Retry-After."""
+    delay = min(config.retry_max_delay, config.retry_delay * 2 ** min(attempt, 30))
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is not None:
+        delay = max(delay, retry_after)
+    if delay > 0:
+        time.sleep(delay)
 
 
 def validate_llm_output(response_text: str) -> dict:
@@ -232,6 +260,156 @@ def _to_dict(obj: object) -> dict | None:
 
 
 _CLIENT_CACHE: dict[tuple[str, str], AnyLLM] = {}
+_OPENROUTER_CLIENTS: dict[tuple[str, str], httpx.Client] = {}
+
+
+def _get_openrouter_client(config: AnalyzerConfig) -> httpx.Client:
+    """Reuse a synchronous HTTP client without OpenAI response validation."""
+    base = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
+    key = (base, config.api_key or "")
+    client = _OPENROUTER_CLIENTS.get(key)
+    if client is None:
+        client = httpx.Client(
+            base_url=base + "/",
+            headers={"Authorization": f"Bearer {config.api_key}"},
+        )
+        _OPENROUTER_CLIENTS[key] = client
+    return client
+
+
+def _retry_after_seconds(value: str | None) -> float | None:
+    """Read a Retry-After header expressed in seconds or as an HTTP date."""
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            date = parsedate_to_datetime(value)
+            seconds = (date - datetime.now(UTC)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return max(0.0, seconds) if math.isfinite(seconds) else None
+
+
+def _optional_int(value: object) -> int | None:
+    """Normalize optional provider metadata without rejecting an answer."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)  # type: ignore[call-overload]
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _call_openrouter(request: dict, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
+    """Check HTTP and body-level errors before reading completion content.
+
+    OpenRouter can report failures in HTTP 200 responses, at the top level or
+    inside choices. Never accept partial content from an error completion.
+    """
+    started = time.monotonic()
+    try:
+        response = _get_openrouter_client(config).post(
+            "chat/completions", json=request, timeout=config.timeout
+        )
+    except httpx.RequestError as error:
+        metadata = APIMetadata(
+            model=config.model_name,
+            provider="openrouter",
+            latency_ms=(time.monotonic() - started) * 1000,
+            error_type=type(error).__name__,
+            error_message=str(error),
+        )
+        raise PromptingError(
+            f"OpenRouter request failed: {error}", metadata=metadata
+        ) from error
+    except (ImportError, ValueError) as error:
+        raise PromptingError(
+            f"OpenRouter client configuration failed: {error}", retryable=False
+        ) from error
+
+    metadata = APIMetadata(
+        model=config.model_name,
+        provider="openrouter",
+        http_status=response.status_code,
+        latency_ms=(time.monotonic() - started) * 1000,
+    )
+    retry_after = _retry_after_seconds(response.headers.get("Retry-After"))
+
+    def fail(message: str, retryable: bool = True) -> NoReturn:
+        metadata.error_message = message
+        metadata.error_type = "OpenRouterError"
+        raise PromptingError(
+            message, metadata, retryable=retryable, retry_after=retry_after
+        )
+
+    try:
+        body = response.json()
+    except ValueError:
+        metadata.error_output = response.text[:4000]
+        fail(
+            f"OpenRouter returned non-JSON content (HTTP {response.status_code}).",
+            response.status_code not in {400, 401, 402, 403, 404, 405, 413, 422},
+        )
+    if not isinstance(body, dict):
+        fail(
+            "OpenRouter returned a non-object JSON response "
+            f"(HTTP {response.status_code})."
+        )
+
+    metadata.raw_response = body
+    metadata.model = str(body.get("model") or config.model_name)
+    metadata.response_id = str(body["id"]) if body.get("id") is not None else None
+    metadata.created = _optional_int(body.get("created"))
+    metadata.usage = body.get("usage") if isinstance(body.get("usage"), dict) else None
+    choices = body.get("choices")
+    choices = choices if isinstance(choices, list) else []
+    first = choices[0] if choices and isinstance(choices[0], dict) else {}
+    reason = first.get("finish_reason")
+    metadata.finish_reason = str(reason) if reason is not None else None
+
+    provider_error = body.get("error")
+    failed_choice = False
+    for choice in choices:
+        if isinstance(choice, dict):
+            if (
+                choice.get("error") is not None
+                or choice.get("finish_reason") == "error"
+            ):
+                failed_choice = True
+                metadata.finish_reason = str(choice.get("finish_reason") or "error")
+                if provider_error is None:
+                    provider_error = choice.get("error")
+    if not response.is_success or provider_error is not None or failed_choice:
+        details = provider_error if isinstance(provider_error, dict) else {}
+        code = _optional_int(details.get("code")) or response.status_code
+        message = (
+            details.get("message")
+            or provider_error
+            or "Completion failed; no provider explanation supplied."
+        )
+        extra = details.get("metadata")
+        if isinstance(extra, dict) and extra.get("raw"):
+            message = f"{message}; provider details: {str(extra['raw'])[:2000]}"
+        metadata.error_output = json.dumps(provider_error, ensure_ascii=False)
+        fail(
+            f"OpenRouter error (HTTP {response.status_code}, code {code}, "
+            f"generation {metadata.response_id or 'unknown'}): {message}",
+            code not in {400, 401, 402, 403, 404, 405, 413, 422},
+        )
+
+    if reason in {"length", "content_filter"}:
+        fail(
+            f"OpenRouter completion ended with {reason!r}; "
+            "no complete answer available.",
+            False,
+        )
+    message = first.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        fail("OpenRouter returned no usable completion text.")
+    return content, metadata
 
 
 def _get_client(config: AnalyzerConfig) -> AnyLLM:
@@ -274,14 +452,19 @@ def reset_client_cache() -> None:
     down. The next request rebuilds the client it needs.
     """
     _CLIENT_CACHE.clear()
+    for client in _OPENROUTER_CLIENTS.values():
+        client.close()
+    _OPENROUTER_CLIENTS.clear()
+
+
+atexit.register(reset_client_cache)
 
 
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
-    """Make a chat completion request through any-llm.
+    """Make a completion request, preserving OpenRouter error responses.
 
-    Routes the request to the configured provider (default "openrouter") using
-    the resolved API key. The request and response shape are OpenAI-compatible,
-    so response text is read from choices[0].message.content.
+    OpenRouter uses synchronous HTTP so its error envelopes are checked before
+    parsing content. Other providers use any-llm. The return shape is shared.
 
     Args:
     ----
@@ -308,16 +491,23 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
     if config.temperature is not None:
         request_kwargs["temperature"] = config.temperature
 
+    if config.provider == "openrouter":
+        return _call_openrouter(request_kwargs, config)
+
     start_time = time.time()
 
     try:
         client = _get_client(config)
-        response = client.completion(**request_kwargs)
+        response = client.completion(**request_kwargs, timeout=config.timeout)
     except Exception as e:  # noqa: BLE001 - normalize all provider errors
         # A failed request may have left the cached client's connection pool
         # unusable, so drop it rather than reusing it for the retry.
         _CLIENT_CACHE.pop((config.provider, config.api_key or ""), None)
-        raise PromptingError(f"API request failed: {e}") from e
+        raise PromptingError(
+            f"API request failed: {e}",
+            retryable=getattr(e, "status_code", None)
+            not in {400, 401, 402, 403, 404, 405, 413, 422},
+        ) from e
 
     latency_ms = (time.time() - start_time) * 1000
 
@@ -369,6 +559,7 @@ def prompt_for_constructs(
     last_metadata: APIMetadata | None = None
 
     for attempt in range(max_attempts):
+        last_metadata = None
         try:
             response_text, metadata = call_llm_api(prompt, config)
             last_metadata = metadata
@@ -383,11 +574,13 @@ def prompt_for_constructs(
             return result, metadata
 
         except PromptingError as e:
+            if e.metadata is not None:
+                last_metadata = e.metadata
             if last_metadata is not None:
                 last_metadata.num_retries = attempt
 
-            if attempt < max_attempts - 1:
-                time.sleep(1)
+            if attempt < max_attempts - 1 and e.retryable:
+                wait_before_retry(config, attempt, e)
                 continue
 
             if last_metadata is None:
@@ -405,9 +598,11 @@ def prompt_for_constructs(
                 error_metadata = last_metadata
 
             raise PromptingError(
-                f"Failed after {max_attempts} attempts for document "
+                f"Failed after {attempt + 1} attempts for document "
                 f"'{document_id}'. Last error: {e}",
                 metadata=error_metadata,
+                retryable=e.retryable,
+                retry_after=e.retry_after,
             ) from e
 
     raise PromptingError(f"Unexpected failure for document '{document_id}'")
