@@ -52,15 +52,17 @@ Codebook of constructs:
 {codebook}
 
 Instructions:
-1. Identify which constructs from the codebook appear in the text.
-2. For each construct found, extract all instances where it appears.
+1. Identify which constructs from the codebook are evidenced in the text.
+   Do not detect constructs that are not mentioned or whose presence is negated.
+2. For each construct found, extract only instances that provide evidence of it.
+   Omit negated mentions entirely; do not assign them a score or an instance.
+   If the same construct is also evidenced elsewhere, include those instances.
 3. For each instance, provide:
    - Speaker ID if available
    - The construct name
    - An exact quote from the text
    - An ordinal confidence score:
-     0 = construct is not mentioned or is negated
-     1 = indirect mention or not clear
+     1 = indirect or unclear evidence of the construct
      2 = clear and prototypical mention of the construct
 
 You must respond with only a valid JSON object in exactly this format:
@@ -70,12 +72,13 @@ You must respond with only a valid JSON object in exactly this format:
             "construct": "<construct name>",
             "speaker_id": "<speaker ID or null if not available>",
             "quote": "<exact quote from text>",
-            "confidence": <0, 1, or 2>
+            "confidence": <1 or 2>
         }}
     ]
 }}
 
-If no constructs are found, return: {{"instances": []}}
+If no constructs are evidenced, including when all mentions are negated,
+return: {{"instances": []}}
 
 Important:
 - Return only the JSON object, no other text.

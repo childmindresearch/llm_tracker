@@ -1,6 +1,5 @@
 """Utility functions for llm_tracker."""
 
-
 import pandas as pd
 
 from llm_tracker.models import AnalysisResult
@@ -40,8 +39,9 @@ def format_coding_table(
         "  quote       : exact quote extracted from the source text\n"
         "  speaker_id  : speaker identifier if available in the source text\n"
         "  quote_index : character-level start:end indices of the quote\n"
-        "  confidence  : LLM confidence score (0=not mentioned/negated,\n"
-        "                1=indirect, 2=clear)\n"
+        "  confidence  : LLM confidence score (1=indirect or unclear evidence,\n"
+        "                2=clear; missing for human codings)\n"
+        "Absent or negated constructs do not produce instance rows.\n"
     )
 
     rows: list[dict] = []

@@ -44,7 +44,7 @@ class ConstructInstance(BaseModel):
         speaker_id: Speaker identifier if available.
         quote: Exact quote from the text where construct appears.
         quote_index: Start and end indices of the quote in the original text.
-        confidence: Ordinal confidence score (0-2).
+        confidence: Ordinal confidence score (1-2), or None for human codings.
 
     """
 
@@ -58,11 +58,12 @@ class ConstructInstance(BaseModel):
     )
     confidence: int | None = Field(
         default=None,
-        ge=0,
+        ge=1,
         le=2,
         description=(
-            "Confidence score: 0=not mentioned/negated, 1=indirect, "
-            "2=clear. None for human codings."
+            "Confidence score: 1=indirect or unclear evidence, 2=clear. "
+            "Absent or negated constructs have no instance. "
+            "None for human codings."
         ),
     )
 
