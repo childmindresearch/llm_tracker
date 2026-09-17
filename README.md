@@ -17,8 +17,11 @@ The package supports:
 
 **Please cite this if you use this package:**
 
-Low, D., Mair, P., Nock, M., & Ghosh, S. (2025). Text Psychometrics: Assessing Psychological Constructs in Text Using Natural Language Processing. PsyArxiv. https://osf.io/preprints/psyarxiv/9rdux_v4
+Low, D., Mair, P., Nock, M., & Ghosh, S. (in press). Text Psychometrics: Assessing Psychological Constructs in Text Using Natural Language Processing. PLOS Digital Health. 
 
+Preprint: https://osf.io/preprints/psyarxiv/9rdux_v5
+
+Funded by the Mind and Life Institute Varela Grant. 
 
 ## Installation
 
