@@ -1283,6 +1283,8 @@ def optimize_codebook(
     n_counterexamples: int | str = 50,
     seed: int = 0,
     rerun_optimized_codebook: int = 0,
+    *,
+    llm_output_dir: Path | str | None = None,
 ) -> list[dict]:
     """Iteratively refine the poorly performing constructs in a codebook.
 
@@ -1327,6 +1329,12 @@ def optimize_codebook(
         seed: Random seed for sampling, for reproducible builds. Defaults to 0.
         rerun_optimized_codebook: Number of additional reruns after pass 1.
             0 (default) produces only v001.
+        llm_output_dir: Optional parent directory for rerun LLM results,
+            metadata, and errors. Each optimization run gets a timestamped
+            subdirectory, with a separate analyzer folder for each rerun.
+            Overrides analyze_kwargs['output_dir'] when supplied. If None,
+            preserves the analyzer output settings in analyze_kwargs. Accepted
+            but unused when no re-coding occurs; no results directory is created.
 
     Returns:
     -------
@@ -1364,12 +1372,19 @@ def optimize_codebook(
 
     # --- Reruns: re-code with the previous partial only (Option B) ---
     comparer = LLMTrackerComparer(config=analyzer.config)
+    llm_run_dir = None
 
     for i in range(rerun_optimized_codebook):
         version = i + 2  # v002, v003, ...
 
         # Re-code using ONLY the previous partial codebook.
-        llm_results, _meta, _errors = _recode(analyzer, path, prev_path, analyze_kwargs)
+        rerun_kwargs = dict(analyze_kwargs)
+        if llm_output_dir is not None:
+            if llm_run_dir is None:
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")
+                llm_run_dir = Path(llm_output_dir) / f"{base_name}_{timestamp}"
+            rerun_kwargs["output_dir"] = str(llm_run_dir / f"rerun_{i + 1:03d}")
+        llm_results, _meta, _errors = _recode(analyzer, path, prev_path, rerun_kwargs)
 
         # Compare against human data filtered to the partial's constructs.
         flagged = set(partial["codebook"].keys())
