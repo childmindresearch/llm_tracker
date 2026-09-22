@@ -1033,25 +1033,47 @@ def _format_doc_stats(row: pd.Series) -> str:
     return f"{document_count} [{p5:.2f}-{p95:.2f}]"
 
 
-def format_concatenated(concatenated: pd.DataFrame) -> pd.DataFrame:
+def format_concatenated(
+    concatenated: pd.DataFrame,
+    *,
+    metrics: list[str] | None = None,
+) -> pd.DataFrame:
     """Format pooled construct metrics for notebook display.
 
     Args:
     ----
         concatenated: Pooled construct metrics from compute_summary_tables.
+        metrics: Metrics to display, in the requested order. Defaults to all:
+            sensitivity, precision, f1, jaccard, and pr_auc. Pass an empty list
+            to show only counts and document statistics.
 
     Returns:
     -------
         Display DataFrame with rounded metrics and formatted document stats.
 
+    Raises:
+    ------
+        TypeError: If metrics is a string instead of a list of names.
+        ValueError: If a requested metric is not supported.
+
     """
+    available_metrics = [*METRICS, "pr_auc"]
+    if isinstance(metrics, str):
+        raise TypeError("metrics must be a list of names, e.g. ['f1', 'pr_auc'].")
+    selected_metrics = available_metrics if metrics is None else metrics
+    unknown = [metric for metric in selected_metrics if metric not in available_metrics]
+    if unknown:
+        raise ValueError(
+            f"Unknown metrics: {unknown}. Choose from: {available_metrics}."
+        )
+
     if concatenated.empty:
         return concatenated
 
     display_columns = ["construct", "tp", "fp", "fn"]
     display = concatenated[display_columns].copy()
 
-    for metric in [*METRICS, "pr_auc"]:
+    for metric in selected_metrics:
         display[metric] = concatenated[metric].apply(
             lambda value: "-" if pd.isna(value) else f"{value:.2f}"
         )
