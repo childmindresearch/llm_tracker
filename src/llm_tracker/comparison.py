@@ -381,7 +381,15 @@ def _base_row(doc_id: str, construct: str, status: str) -> dict:
 
 
 class LLMTrackerComparer:
-    """Compare human-coded and LLM-coded results using an LLM matcher."""
+    """Compare human-coded and LLM-coded results using an LLM matcher.
+
+    Attributes:
+    ----------
+        output_path: Directory saved by the latest compare_results call, or
+            None before a run or when that call did not save successfully.
+            Pass this path to summary functions to save alongside the comparison.
+
+    """
 
     def __init__(
         self,
@@ -389,6 +397,7 @@ class LLMTrackerComparer:
         match_model: str | None = None,
         config: AnalyzerConfig | None = None,
     ) -> None:
+        self.output_path: Path | None = None
         if config is not None:
             self.config = config
         elif match_model is not None:
@@ -543,7 +552,8 @@ class LLMTrackerComparer:
             human_results: Human coded results keyed by document ID.
             llm_results: LLM coded results keyed by document ID.
             output_dir: Optional base name for saving the row level comparison
-                table to a timestamped CSV folder.
+                table to a timestamped CSV folder. The actual saved directory
+                is exposed as self.output_path; it is None if saving is omitted.
 
         Returns:
         -------
@@ -551,6 +561,7 @@ class LLMTrackerComparer:
             human only, or LLM only construct instance.
 
         """
+        self.output_path = None
         rows = []
 
         document_ids = sorted(set(human_results) | set(llm_results))
@@ -578,7 +589,7 @@ class LLMTrackerComparer:
         if not df.empty:
             df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(int)
         if output_dir:
-            _save_comparison_table(df, output_dir)
+            self.output_path = _save_comparison_table(df, output_dir)
         return df
 
     def compare_documents(
