@@ -172,6 +172,13 @@ See [tutorial.ipynb](tutorial.ipynb) for a fuller walkthrough using the
 sample data and codebook.
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorial.ipynb)
 
+To map the coded quotes — each quote a dot, colored by construct — and check
+which constructs are hard to tell apart, see
+[tutorials/embeddings_tutorial.ipynb](tutorials/embeddings_tutorial.ipynb). It
+reads the output of `format_coding_table()` and is written for clinicians
+without a technical background.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/embeddings_tutorial.ipynb)
+
 ## Testing
 
 Run the test suite with:
