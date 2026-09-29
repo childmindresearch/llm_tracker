@@ -153,6 +153,26 @@ class LLMTrackerAnalyzer:
 
         self.config = AnalyzerConfig(**config_kwargs)
 
+    @property
+    def prompt(self) -> str:
+        """Return the active coding prompt template, including its placeholders.
+
+        Print with ``print(analyzer.prompt)``. Assign a string to change future
+        coding requests, or assign None to restore the package default. Custom
+        templates use {text} and {codebook}; literal JSON braces must be doubled.
+        This property shares the existing config.custom_prompt setting.
+        """
+        return self.config.prompt_template
+
+    @prompt.setter
+    def prompt(self, value: str | None) -> None:
+        """Set the coding prompt template, or restore the default with None."""
+        if value is not None and not isinstance(value, str):
+            raise TypeError("prompt must be a string or None.")
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("prompt must not be empty; use None for the default.")
+        self.config.custom_prompt = value
+
     def analyze_document(
         self, document_path: Path | str, codebook: dict
     ) -> tuple[AnalysisResult, APIMetadata]:

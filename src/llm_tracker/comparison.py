@@ -544,6 +544,8 @@ class LLMTrackerComparer:
         human_results: dict[str, AnalysisResult],
         llm_results: dict[str, AnalysisResult],
         output_dir: str | None = None,
+        *,
+        binarize_confidence: bool = True,
     ) -> pd.DataFrame:
         """Compare human and LLM results across all documents.
 
@@ -554,6 +556,11 @@ class LLMTrackerComparer:
             output_dir: Optional base name for saving the row level comparison
                 table to a timestamped CSV folder. The actual saved directory
                 is exposed as self.output_path; it is None if saving is omitted.
+            binarize_confidence: Map LLM confidence 1 to 0 and 2 to 1 in the
+                returned/saved comparison table. Defaults to True. Original
+                analysis results and human scores are unchanged. This only
+                relabels scores: it does not filter detections or change matches.
+                Set False to retain original scores or for already-binary input.
 
         Returns:
         -------
@@ -587,6 +594,11 @@ class LLMTrackerComparer:
 
         df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
         if not df.empty:
+            if binarize_confidence:
+                confidence_remap = {1: 0, 2: 1}
+                df["llm_confidence"] = df["llm_confidence"].map(
+                    lambda score: confidence_remap.get(score, score)
+                )
             df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(int)
         if output_dir:
             self.output_path = _save_comparison_table(df, output_dir)
@@ -597,6 +609,8 @@ class LLMTrackerComparer:
         human_json: Path | str,
         llm_json: Path | str,
         output_dir: str | None = None,
+        *,
+        binarize_confidence: bool = True,
     ) -> pd.DataFrame:
         """Compare one reference result JSON with one LLM result JSON.
 
@@ -605,6 +619,8 @@ class LLMTrackerComparer:
             human_json: Path to the reference result JSON file.
             llm_json: Path to the LLM result JSON file.
             output_dir: Optional base name for saving the comparison table.
+            binarize_confidence: Relabel LLM scores 1 to 0 and 2 to 1, as in
+                compare_results. Defaults to True; no detections are filtered.
 
         Returns:
         -------
@@ -624,6 +640,7 @@ class LLMTrackerComparer:
             {doc_id: human_result},
             {doc_id: llm_result},
             output_dir=output_dir,
+            binarize_confidence=binarize_confidence,
         )
 
     def compare_directories(
@@ -631,6 +648,8 @@ class LLMTrackerComparer:
         human_dir: Path | str,
         llm_dir: Path | str,
         output_dir: str | None = None,
+        *,
+        binarize_confidence: bool = True,
     ) -> pd.DataFrame:
         """Compare reference and LLM result directories.
 
@@ -639,6 +658,8 @@ class LLMTrackerComparer:
             human_dir: Path to a reference result directory or encodings folder.
             llm_dir: Path to an LLM result directory or encodings folder.
             output_dir: Optional base name for saving the comparison table.
+            binarize_confidence: Relabel LLM scores 1 to 0 and 2 to 1, as in
+                compare_results. Defaults to True; no detections are filtered.
 
         Returns:
         -------
@@ -666,6 +687,7 @@ class LLMTrackerComparer:
             human_results,
             llm_results,
             output_dir=output_dir,
+            binarize_confidence=binarize_confidence,
         )
 
 
