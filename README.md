@@ -166,18 +166,33 @@ recovered_results, recovered_metadata, remaining_errors = analyzer.retry_errors(
 )
 ```
 
-## Tutorial
+## Tutorials
+
+### Basic walkthrough
 
 See [tutorial.ipynb](tutorial.ipynb) for a fuller walkthrough using the
 sample data and codebook.
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorial.ipynb)
 
-To map the coded quotes — each quote a dot, colored by construct — and check
-which constructs are hard to tell apart, see
-[tutorials/embeddings_tutorial.ipynb](tutorials/embeddings_tutorial.ipynb). It
-reads the output of `format_coding_table()` and is written for clinicians
-without a technical background.
+### Anonymize your data first
+
+Before sending any text to an LLM, remove personal information locally with
+[anonymize-pii](https://github.com/childmindresearch/anonymize-pii), which runs
+entirely on your own machine. See
+[tutorials/anonymization_tutorial.ipynb](tutorials/anonymization_tutorial.ipynb).
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/anonymization_tutorial.ipynb)
+
+### Embeddings map
+
+[tutorials/embeddings_tutorial.ipynb](tutorials/embeddings_tutorial.ipynb)
+turns each coded quote into an embedding and places it on a 2D map — each quote
+a dot, colored by construct — then checks which constructs are hard to tell
+apart. It reads the output of `format_coding_table()`.
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/embeddings_tutorial.ipynb)
+
+<img src="docs/images/embeddings_map.png" alt="Quote map: each dot is a quote, colored by construct" width="420">
+
+*Example data: prototypical phrases from the Suicide Risk Lexicon (8 non-suicidal constructs).*
 
 ## Testing
 
@@ -196,8 +211,5 @@ This package sends text to an LLM API during analysis and matching. Do not send
 identifiable or sensitive data unless it has been properly anonymized and your
 API provider's data handling policy is appropriate for your use case.
 
-For a walkthrough of anonymizing documents locally before analysis — using
-[anonymize-pii](https://github.com/childmindresearch/anonymize-pii), which runs
-entirely on your own machine — see
-[tutorials/anonymization_tutorial.ipynb](tutorials/anonymization_tutorial.ipynb).
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/anonymization_tutorial.ipynb)
+To anonymize documents locally before analysis, see
+[Anonymize your data first](#anonymize-your-data-first).
