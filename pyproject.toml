@@ -27,6 +27,15 @@ scikit-learn = "^1.0"
 pandas = ">=2.0,<3"
 numpy = "^1.26"
 krippendorff = "^0.8"
+streamlit = {version = ">=1.55,<2", optional = true}
+openpyxl = {version = ">=3.1,<4", optional = true}
+PyYAML = {version = ">=6,<7", optional = true}
+
+[tool.poetry.extras]
+review = ["streamlit", "openpyxl", "PyYAML"]
+
+[tool.poetry.scripts]
+llm-tracker-review = "llm_tracker.review.cli:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
@@ -76,7 +85,13 @@ module = ["tests.*"]
 disallow_untyped_defs = false
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["streamlit", "streamlit.*", "yaml"]
+ignore_missing_imports = true
+
 [tool.deptry.per_rule_ignores]
+# pandas loads this optional XLSX engine dynamically.
+DEP002 = ["openpyxl"]
 DEP004 = ["spacy", "textdescriptives", "sentence_transformers"]
 
 [tool.ruff.lint.per-file-ignores]
