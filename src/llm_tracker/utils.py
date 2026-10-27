@@ -41,7 +41,8 @@ def format_coding_table(
         "  quote_index : character-level start:end indices of the quote\n"
         "  confidence  : LLM confidence score (1=indirect or unclear evidence,\n"
         "                2=clear; missing for human codings)\n"
-        "Absent or negated constructs do not produce instance rows.\n"
+        "Explicit classification absences may appear as confidence 0; "
+        "the default quote prompt omits them.\n"
     )
 
     rows: list[dict] = []
