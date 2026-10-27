@@ -10,6 +10,7 @@ import json
 import time
 
 from any_llm import AnyLLM
+from llm_tracker.outputs import redact, record_usage
 
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.models import AnalysisResult, APIMetadata, ConstructInstance
@@ -276,6 +277,7 @@ def reset_client_cache() -> None:
     _CLIENT_CACHE.clear()
 
 
+@record_usage
 def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]:
     """Make a chat completion request through any-llm.
 
@@ -317,7 +319,7 @@ def call_llm_api(prompt: str, config: AnalyzerConfig) -> tuple[str, APIMetadata]
         # A failed request may have left the cached client's connection pool
         # unusable, so drop it rather than reusing it for the retry.
         _CLIENT_CACHE.pop((config.provider, config.api_key or ""), None)
-        raise PromptingError(f"API request failed: {e}") from e
+        raise PromptingError(f"API request failed: {redact(str(e))}") from e
 
     latency_ms = (time.time() - start_time) * 1000
 
