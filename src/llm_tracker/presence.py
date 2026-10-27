@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from llm_tracker.models import AnalysisResult
+from llm_tracker.outputs import RunOutput, source_run, export_quotes
 
 
 def compare_presence(
@@ -16,6 +17,8 @@ def compare_presence(
     constructs: Iterable[str],
     document_ids: Iterable[str] | None = None,
     output_dir: Path | str | None = None,
+    master_output_dir: Path | str | None = None,
+    model_name: str | None = None,
 ) -> pd.DataFrame:
     """Compare whether each coder detected each construct in each document.
 
@@ -37,9 +40,13 @@ def compare_presence(
     columns. Pass this grid directly to ``compute_binary_metrics``; do not pass
     it to the span-level summary or codebook optimization functions.
 
-    ``output_dir`` saves presence_grid.csv directly in that directory, without
-    adding a timestamp. Reusing the directory overwrites that file. Inputs are
-    never modified.
+    master_output_dir (or output_dir) is the parent for a new timestamped
+    comparison_short run. New coding results also carry their master directory
+    automatically. The presence grid and both quote views save automatically;
+    compute_binary_metrics(grid) saves the binary table in that same run.
+    model_name supplies a fallback when plain loaded dictionaries lack model
+    provenance. grid.attrs["output_path"] identifies the actual saved directory.
+    Inputs are never modified.
     """
 
     def roster(values: Iterable[str], name: str) -> list[str]:
@@ -54,9 +61,11 @@ def compare_presence(
     if not names:
         raise ValueError("constructs must include the full, nonempty construct roster.")
     docs = roster(
-        sorted(set(human_results) | set(llm_results))
-        if document_ids is None
-        else document_ids,
+        (
+            sorted(set(human_results) | set(llm_results))
+            if document_ids is None
+            else document_ids
+        ),
         "document_ids",
     )
     missing_human = [doc for doc in docs if doc not in human_results]
@@ -133,8 +142,28 @@ def compare_presence(
             "tn",
         ],
     )
-    if output_dir is not None:
-        directory = Path(output_dir)
-        directory.mkdir(parents=True, exist_ok=True)
-        grid.to_csv(directory / "presence_grid.csv", index=False)
+    source = source_run(llm_results)
+    human = source_run(human_results)
+    root = (
+        master_output_dir
+        or output_dir
+        or (source.record["master_output_dir"] if source else None)
+    )
+    if root is not None:
+        run = RunOutput.create(
+            root,
+            "comparison_short",
+            source.record["model"] if source else (model_name or "unknown"),
+            source_encoding_run_id=source.record["run_id"] if source else "unavailable",
+            source_human_run_id=human.record["run_id"] if human else "unavailable",
+            input_documents=len(docs),
+            successful_documents=len(docs),
+            failed_documents=0,
+            construct_count=len(names),
+            comparison_rows=len(grid),
+            matching_model="N/A",
+        )
+        run.table("presence_grid", grid)
+        export_quotes(run, {doc: llm_results[doc] for doc in docs})
+        run.finish()
     return grid

@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from llm_tracker.outputs import RunOutput, document_stem, redact, slug
 
 import pandas as pd
 
@@ -355,9 +356,17 @@ def create_output_directory(
         Created output directory path.
 
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    if output_name and RunOutput.load(output_name):
+        managed = Path(output_name)
+        for name in ("encodings", "metadata", "errors", "DF"):
+            (managed / name).mkdir(exist_ok=True)
+        return managed
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H%M%S_%f")
     if output_name:
-        directory_name = f"{output_name}_{timestamp}"
+        output_path_base = Path(output_name)
+        directory_name = (
+            output_path_base.parent / f"{slug(output_path_base.name)}_{timestamp}"
+        )
     else:
         directory_name = f"llm_tracker_output_{timestamp}"
 
@@ -386,9 +395,9 @@ def save_analysis_result(result: AnalysisResult, output_dir: Path) -> Path:
         Path to the saved JSON file.
 
     """
-    file_path = output_dir / "encodings" / f"{result.document_id}.json"
+    file_path = output_dir / "encodings" / f"{document_stem(result.document_id)}.json"
     file_path.write_text(
-        json.dumps(result.model_dump(), indent=2, ensure_ascii=False),
+        json.dumps(redact(result.model_dump()), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     return file_path
@@ -408,9 +417,9 @@ def save_metadata(metadata: APIMetadata, document_id: str, output_dir: Path) -> 
         Path to the saved metadata file.
 
     """
-    file_path = output_dir / "metadata" / f"{document_id}_meta.json"
+    file_path = output_dir / "metadata" / f"{document_stem(document_id)}_meta.json"
     file_path.write_text(
-        json.dumps(metadata.model_dump(), indent=2, ensure_ascii=False),
+        json.dumps(redact(metadata.model_dump()), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     return file_path
@@ -494,9 +503,9 @@ def save_error_record(error: ErrorRecord, output_dir: Path) -> Path:
     errors_dir = output_dir / "errors"
     errors_dir.mkdir(exist_ok=True)
 
-    file_path = errors_dir / f"{error.document_id}_error.json"
+    file_path = errors_dir / f"{document_stem(error.document_id)}_error.json"
     file_path.write_text(
-        json.dumps(error.model_dump(), indent=2, ensure_ascii=False),
+        json.dumps(redact(error.model_dump()), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     return file_path

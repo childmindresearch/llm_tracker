@@ -1,5 +1,16 @@
 """Compare human and LLM construct codings."""
 
+from llm_tracker.outputs import (
+    comparison_run,
+    save_tables,
+    RunOutput,
+    RunResults,
+    source_run,
+    slug,
+    optimization_run,
+    atomic_json,
+)
+
 import copy
 import json
 import random
@@ -123,11 +134,11 @@ def _result_json_dir(path: Path | str) -> Path:
     directory = Path(path)
     if not directory.is_dir():
         raise ComparisonError(f"Result directory not found: {directory}")
-    if any(directory.glob("*.json")):
-        return directory
     encodings = directory / "encodings"
     if encodings.is_dir():
         return encodings
+    if any(directory.glob("*.json")):
+        return directory
     raise ComparisonError(f"No JSON result files found in {directory}")
 
 
@@ -148,7 +159,10 @@ def _result_files(path: Path | str) -> dict[str, Path]:
             containing result JSON files.
 
     """
-    return {p.stem: p for p in _result_json_dir(path).glob("*.json")}
+    return {
+        _load_result_json(p).document_id: p
+        for p in _result_json_dir(path).glob("*.json")
+    }
 
 
 def _save_comparison_table(df: pd.DataFrame, output_dir: str) -> Path:
@@ -164,11 +178,7 @@ def _save_comparison_table(df: pd.DataFrame, output_dir: str) -> Path:
         Path to the created output directory.
 
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    out_dir = Path.cwd() / f"{output_dir}_{timestamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_dir / "comparison_rows.csv", index=False)
-    return out_dir
+    return save_tables(output_dir, {"comparison_rows": df})
 
 
 def _group_by_construct(
@@ -539,6 +549,7 @@ class LLMTrackerComparer:
 
         return rows
 
+    @comparison_run
     def compare_results(
         self,
         human_results: dict[str, AnalysisResult],
@@ -553,9 +564,10 @@ class LLMTrackerComparer:
         ----
             human_results: Human coded results keyed by document ID.
             llm_results: LLM coded results keyed by document ID.
-            output_dir: Optional base name for saving the row level comparison
-                table to a timestamped CSV folder. The actual saved directory
-                is exposed as self.output_path; it is None if saving is omitted.
+            output_dir: Parent folder for a new comparison_long run.
+                config.master_output_dir takes precedence when configured.
+                self.output_path is the actual saved run directory; returned
+                DataFrame attrs carry that directory to summary/table functions.
             binarize_confidence: Map LLM confidence 1 to 0 and 2 to 1 in the
                 returned/saved comparison table. Defaults to True. Original
                 analysis results and human scores are unchanged. This only
@@ -674,8 +686,16 @@ class LLMTrackerComparer:
         """
         human_files = _result_files(human_dir)
         llm_files = _result_files(llm_dir)
-        human_results: dict[str, AnalysisResult] = {}
-        llm_results: dict[str, AnalysisResult] = {}
+        human_root = (
+            Path(human_dir) if RunOutput.load(human_dir) else Path(human_dir).parent
+        )
+        llm_root = Path(llm_dir) if RunOutput.load(llm_dir) else Path(llm_dir).parent
+        human_results = RunResults(
+            output_path=human_root if RunOutput.load(human_root) else None
+        )
+        llm_results = RunResults(
+            output_path=llm_root if RunOutput.load(llm_root) else None
+        )
 
         for doc_id in sorted(set(human_files) | set(llm_files)):
             if doc_id in human_files:
@@ -920,9 +940,20 @@ def compute_summary_tables(
             plus overall.
 
     """
+    output_dir = output_dir or df.attrs.get("output_path")
     if df.empty:
         empty_counts = pd.DataFrame(columns=["doc_id", "construct", "tp", "fp", "fn"])
-        return empty_counts, pd.DataFrame(), pd.DataFrame()
+        empty_pooled, empty_weighted = pd.DataFrame(), pd.DataFrame()
+        if output_dir:
+            _save_tables(
+                output_dir,
+                {
+                    "span_per_doc": empty_counts,
+                    "span_concatenated": empty_pooled,
+                    "span_weighted": empty_weighted,
+                },
+            )
+        return empty_counts, empty_pooled, empty_weighted
 
     per_doc_counts = (
         df.groupby(["doc_id", "construct"])[["tp", "fp", "fn"]].sum().reset_index()
@@ -1015,11 +1046,7 @@ def _save_tables(output_dir: Path | str, tables: dict[str, pd.DataFrame]) -> Pat
         The directory written to.
 
     """
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for stem, table in tables.items():
-        table.to_csv(out_dir / f"{stem}.csv", index=False)
-    return out_dir
+    return save_tables(output_dir, tables)
 
 
 def _format_range(row: pd.Series, metric: str) -> str:
@@ -1446,6 +1473,7 @@ def _recode(
     )
 
 
+@optimization_run
 def optimize_codebook(
     comparison_df: pd.DataFrame,
     concatenated_summary: pd.DataFrame,
@@ -1529,8 +1557,14 @@ def optimize_codebook(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def _save(partial: dict, version: int) -> Path:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        name = f"{base_name}_optimized_codebook_v{version:03d}_{timestamp}.json"
+        tracked = RunOutput.load(out_dir)
+        name = (
+            tracked.filename(
+                f"{slug(base_name)}_optimized_codebook_v{version:03d}", "json"
+            )
+            if tracked
+            else f"{slug(base_name)}_optimized_codebook_v{version:03d}.json"
+        )
         path = out_dir / name
         _write_codebook(partial, path)
         return path
@@ -1734,10 +1768,7 @@ def _extend_unique(target: list, new_items: list) -> bool:
 
 def _write_codebook(codebook: dict, output_path: Path | str) -> None:
     """Write a codebook dict to JSON."""
-    Path(output_path).write_text(
-        json.dumps(codebook, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    atomic_json(output_path, codebook)
 
 
 def build_presence_grid(
@@ -1766,7 +1797,7 @@ def build_presence_grid(
             ``doc_id``, ``construct``, and ``status`` columns.
         presence_threshold: Minimum instance count for a construct to be marked
             present in a document. Must be a positive integer. Defaults to 1.
-        output_dir: Optional directory to write ``presence_grid.csv`` into.
+        output_dir: Optional directory to write a model/timestamp-suffixed presence grid into.
             The grid is the only table carrying true negatives, so it is worth
             keeping alongside the metric tables.
 
@@ -1780,6 +1811,7 @@ def build_presence_grid(
         ValueError: If presence_threshold is not a positive integer.
 
     """
+    output_dir = output_dir or comparison_df.attrs.get("output_path")
     if (
         not isinstance(presence_threshold, int)
         or isinstance(presence_threshold, bool)
@@ -1790,7 +1822,7 @@ def build_presence_grid(
             f"{presence_threshold!r}."
         )
     if comparison_df.empty:
-        return pd.DataFrame(
+        grid = pd.DataFrame(
             columns=[
                 "doc_id",
                 "construct",
@@ -1800,6 +1832,9 @@ def build_presence_grid(
                 "llm_present",
             ]
         )
+        if output_dir is not None:
+            _save_tables(output_dir, {"presence_grid": grid})
+        return grid
 
     df = comparison_df.copy()
     df["human_inst"] = df["status"].isin(["matched", "human_only"]).astype(int)
@@ -1860,13 +1895,14 @@ def compute_binary_metrics(
     Args:
     ----
         grid: Output of build_presence_grid or compare_presence.
-        output_dir: Optional directory to write ``doc_binary.csv`` into.
+        output_dir: Optional directory to write model/timestamp-suffixed binary metrics into.
 
     Returns:
     -------
         DataFrame with one row per construct plus a pooled ``Overall`` row.
 
     """
+    output_dir = output_dir or grid.attrs.get("output_path")
     columns = [
         "construct",
         "n_docs",
@@ -1885,7 +1921,10 @@ def compute_binary_metrics(
         "kripp_alpha_nominal",
     ]
     if grid.empty:
-        return pd.DataFrame(columns=columns)
+        table = pd.DataFrame(columns=columns)
+        if output_dir is not None:
+            _save_tables(output_dir, {"doc_binary": table})
+        return table
 
     rows = []
     for construct, group in _grid_groups(grid):
@@ -1934,13 +1973,14 @@ def compute_ordinal_metrics(
     Args:
     ----
         grid: Output of build_presence_grid.
-        output_dir: Optional directory to write ``doc_ordinal.csv`` into.
+        output_dir: Optional directory to write model/timestamp-suffixed instance-count metrics into.
 
     Returns:
     -------
         DataFrame with one row per construct plus a pooled ``Overall`` row.
 
     """
+    output_dir = output_dir or grid.attrs.get("output_path")
     columns = [
         "construct",
         "n_docs",
@@ -1953,7 +1993,10 @@ def compute_ordinal_metrics(
         "kripp_alpha_ordinal",
     ]
     if grid.empty:
-        return pd.DataFrame(columns=columns)
+        table = pd.DataFrame(columns=columns)
+        if output_dir is not None:
+            _save_tables(output_dir, {"doc_ordinal": table})
+        return table
 
     rows = []
     for construct, group in _grid_groups(grid):

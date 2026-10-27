@@ -17,6 +17,7 @@ from llm_tracker.models import (
     ErrorRecord,
 )
 from llm_tracker.presence import compare_presence
+from llm_tracker.outputs import RunOutput, RunResults
 
 __version__ = "0.1.0"
 __all__ = [
@@ -27,6 +28,8 @@ __all__ = [
     "AnalyzerConfig",
     "LLMTrackerComparer",
     "compare_presence",
+    "RunOutput",
+    "RunResults",
     "compute_summary_tables",
     "format_weighted_summary",
     "ConstructInstance",

@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from llm_tracker import file_handlers
+from llm_tracker.outputs import encoding_run, retry_encoding_run, document_stem, redact
 from llm_tracker.batch import BatchAnalyzerMixin
 from llm_tracker.config import AnalyzerConfig
 from llm_tracker.file_handlers import (
@@ -50,7 +51,7 @@ def _save_successful_result(
     save_analysis_result(result, output_path)
     save_metadata(metadata, result.document_id, output_path)
     results_by_doc[result.document_id] = result
-    metadata_by_doc[result.document_id] = metadata.model_dump()
+    metadata_by_doc[result.document_id] = redact(metadata.model_dump())
 
 
 def _metadata_from_error(error: Exception, config: AnalyzerConfig) -> APIMetadata:
@@ -73,7 +74,7 @@ def _metadata_from_error(error: Exception, config: AnalyzerConfig) -> APIMetadat
     return APIMetadata(
         model=config.model_name,
         num_retries=config.max_retries,
-        error_message=str(error),
+        error_message=redact(str(error)),
         error_type=type(error).__name__,
         error_output=str(error),
     )
@@ -104,7 +105,7 @@ def _save_processing_error(
     error_record = ErrorRecord(
         document_id=document_id,
         document_path=str(document_path),
-        error_message=str(error),
+        error_message=redact(str(error)),
         model_used=config.model_name,
         timestamp=datetime.now().isoformat(),
     )
@@ -203,6 +204,7 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
             config=self.config,
         )
 
+    @encoding_run
     def analyze_directory(
         self,
         input_dir: Path | str,
@@ -215,7 +217,9 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
         ----
             input_dir: Directory containing supported document files.
             codebook_path: Path to the codebook JSON file.
-            output_dir: Optional base name for the analyzer output directory.
+            output_dir: Legacy base path; its parent is used if config.master_output_dir
+                is unset. Actual directories use llm_encodings_<model>_<timestamp>.
+                The saved directory is available as analyzer.output_path.
 
         Returns:
         -------
@@ -291,6 +295,7 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
 
         return results_by_doc, metadata_by_doc, errors
 
+    @encoding_run
     def analyze_csv(
         self,
         csv_path: Path | str,
@@ -309,7 +314,9 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
             id_column: Optional column to use as the document ID. If omitted,
                 the row index (0..N-1) is used. Duplicate IDs get a numeric
                 suffix (e.g. "id", "id_2", "id_3").
-            output_dir: Optional base name for the analyzer output directory.
+            output_dir: Legacy base path; its parent is used if config.master_output_dir
+                is unset. Actual directories use llm_encodings_<model>_<timestamp>.
+                The saved directory is available as analyzer.output_path.
 
         Returns:
         -------
@@ -416,6 +423,7 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
 
         return results_by_doc, metadata_by_doc, errors
 
+    @retry_encoding_run
     def retry_errors(
         self, output_dir: Path | str, codebook_path: Path | str
     ) -> tuple[dict[str, AnalysisResult], dict[str, dict], list[ErrorRecord]]:
@@ -469,7 +477,9 @@ class LLMTrackerAnalyzer(BatchAnalyzerMixin):
                 )
 
                 old_error_file = (
-                    output_path / "errors" / f"{error_record.document_id}_error.json"
+                    output_path
+                    / "errors"
+                    / f"{document_stem(error_record.document_id)}_error.json"
                 )
                 if old_error_file.exists():
                     old_error_file.unlink()

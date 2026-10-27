@@ -30,6 +30,8 @@ Optional metrics (pass flags to summarize_corpus):
 
 from __future__ import annotations
 
+from llm_tracker.outputs import descriptives_run
+
 import re
 from typing import Optional
 
@@ -37,7 +39,6 @@ import numpy as np
 import pandas as pd
 import spacy
 import textdescriptives as td
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -137,6 +138,7 @@ def _mean_tree_depth(spacy_doc) -> float:
 # ---------------------------------------------------------------------------
 
 
+@descriptives_run
 def summarize_corpus(
     texts: list[str],
     *,
@@ -147,6 +149,8 @@ def summarize_corpus(
     include_sentence_complexity: bool = False,
     sbert_model_name: str = "all-MiniLM-L6-v2",
     decimals: int = 2,
+    output_dir=None,
+    input_path=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Compute a summary table for a list of document strings.
@@ -169,6 +173,10 @@ def summarize_corpus(
         Sentence-transformers model for SBERT coherence.
     decimals : int
         Decimal places for formatting.
+    output_dir : path, optional
+        Master output folder. Saves summary and document CSVs and registers the run.
+    input_path : path, optional
+        Source input path recorded in the master metadata CSV.
 
     Returns
     -------

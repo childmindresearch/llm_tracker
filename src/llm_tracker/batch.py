@@ -7,6 +7,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from llm_tracker.outputs import (
+    RunOutput,
+    redact,
+    RunResults,
+    atomic_json,
+    config_fields,
+    snapshots,
+    finish_encoding,
+    usage_totals,
+    document_stem,
+)
+
 import httpx
 import pandas as pd
 
@@ -56,11 +68,7 @@ class BatchNotReadyError(BatchError):
 
 def _write(path: Path, value: dict) -> None:
     """Atomically replace a local JSON record."""
-    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    temporary.write_text(
-        json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-    temporary.replace(path)
+    atomic_json(path, value)
 
 
 def _read(path: Path) -> dict:
@@ -84,6 +92,36 @@ def _run(value: BatchJob | Path | str) -> tuple[Path, dict]:
 
 def _save(run: Path, manifest: dict) -> None:
     _write(run / "batch" / "manifest.json", manifest)
+    tracked = RunOutput.load(run)
+    if tracked:
+        states = [job["status"] for job in manifest["jobs"]]
+        status = (
+            "submission_unknown"
+            if any(v in UNKNOWN for v in states)
+            else (
+                "preparing"
+                if "prepared" in states
+                else (
+                    "awaiting_collection"
+                    if all(v in TERMINAL | LOCAL_TERMINAL for v in states)
+                    else "submitted"
+                )
+            )
+        )
+        tracked.update(
+            status=status,
+            input_documents=len(manifest["documents"]),
+            batch_size=manifest["batch_size"],
+            batch_job_count=len(states),
+            remote_batch_ids=[
+                j["batch_id"] for j in manifest["jobs"] if j.get("batch_id")
+            ],
+            successful_documents="pending",
+            failed_documents="pending",
+            finished_at="pending",
+            duration_seconds="pending",
+            **usage_totals([], pending=True),
+        )
 
 
 def _size(value: int) -> None:
@@ -144,7 +182,9 @@ class BatchAnalyzerMixin:
         """Freeze CSV inputs and submit independent document requests in batches.
 
         Returns immediately after submission, not after inference. output_dir
-        is a base path with a unique timestamp suffix. batch_size is a maximum
+        is a legacy base path; config.master_output_dir takes precedence, else
+        its parent is used. Runs use llm_encodings_<model>_<timestamp>.
+        batch_size is a maximum
         documents per remote job, not a prompt size or concurrency setting.
         Blank/missing text or IDs and duplicate IDs raise before any paid calls.
         IDs are read as strings to preserve leading zeros; omitted id_column
@@ -237,12 +277,23 @@ class BatchAnalyzerMixin:
             if self.config.temperature is not None:
                 body["temperature"] = self.config.temperature
             document["body"] = body
-        base = Path(output_dir).expanduser()
-        run = base.with_name(
-            f"{base.name}_{datetime.now():%Y-%m-%d_%H%M%S_%f}_{run_id[:8]}"
-        ).resolve()
-        for subdir in ("encodings", "metadata", "errors", "batch"):
-            (run / subdir).mkdir(parents=True, exist_ok=False)
+        root = self.config.master_output_dir or Path(output_dir).expanduser().parent
+        tracked = RunOutput.create(
+            root,
+            "encoding",
+            self.config.model_name,
+            mode="batch",
+            **config_fields(self.config),
+        )
+        snapshots(tracked, self.config, codebook_path)
+        tracked.update(
+            input_path=sorted({d["source"] for d in documents}),
+            input_documents=len(documents),
+        )
+        run = tracked.path
+        self.output_path = run
+        for subdir in ("encodings", "metadata", "errors", "batch", "DF"):
+            (run / subdir).mkdir(exist_ok=True)
         manifest = {
             "version": 1,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -560,7 +611,9 @@ class BatchAnalyzerMixin:
                     else None
                 )
                 save_analysis_result(result, run)
-                (run / "errors" / f"{doc_id}_error.json").unlink(missing_ok=True)
+                (run / "errors" / f"{document_stem(doc_id)}_error.json").unlink(
+                    missing_ok=True
+                )
                 results[doc_id] = result
             except (
                 PromptingError,
@@ -580,10 +633,12 @@ class BatchAnalyzerMixin:
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )
                 save_error_record(record, run)
-                (run / "encodings" / f"{doc_id}.json").unlink(missing_ok=True)
+                (run / "encodings" / f"{document_stem(doc_id)}.json").unlink(
+                    missing_ok=True
+                )
                 errors.append(record)
             save_metadata(meta, doc_id, run)
-            metadata[doc_id] = meta.model_dump()
+            metadata[doc_id] = redact(meta.model_dump())
         _write(
             run / "batch" / "collection_summary.json",
             {
@@ -592,6 +647,28 @@ class BatchAnalyzerMixin:
                 "failed_document_ids": [e.document_id for e in errors],
             },
         )
+        tracked = RunOutput.load(run)
+        if tracked:
+            results = finish_encoding(tracked, results, metadata, errors)
+            usages = []
+            for job in manifest["jobs"]:
+                if job.get("response_file"):
+                    raw = _read(run / "batch" / job["response_file"])
+                    usages.append({"usage": raw.get("usage")})
+                elif not job.get("batch_id"):
+                    usages.append(
+                        {
+                            "usage": dict(
+                                prompt_tokens=0,
+                                completion_tokens=0,
+                                total_tokens=0,
+                                cost=0,
+                            )
+                        }
+                    )
+            tracked.update(
+                usage_scope="all_batch_jobs_including_retries", **usage_totals(usages)
+            )
         return results, metadata, errors
 
     def retry_batch_errors(

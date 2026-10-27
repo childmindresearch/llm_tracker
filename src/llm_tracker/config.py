@@ -117,6 +117,8 @@ class AnalyzerConfig:
             default; set 0 for (best-effort) deterministic output.
         fuzzy_quote_matching: Whether to use fuzzy quote index recovery.
         quote_match_threshold: Minimum fuzzy match score for quote recovery.
+        master_output_dir: General parent directory for encoding, comparison,
+            and optimization runs and the shared run_metadata.csv register.
 
     """
 
@@ -129,10 +131,14 @@ class AnalyzerConfig:
     temperature: float | None = 0.0
     fuzzy_quote_matching: bool = False
     quote_match_threshold: float = 0.85
+    master_output_dir: str | Path | None = None
 
     def __post_init__(self) -> None:
         """Resolve the API key after dataclass initialization."""
         self.api_key = self._load_api_key()
+        from llm_tracker.outputs import register_secret
+
+        register_secret(self.api_key)
 
     def _load_api_key(self) -> str:
         """Load the API key from config, env file, or environment variable.
