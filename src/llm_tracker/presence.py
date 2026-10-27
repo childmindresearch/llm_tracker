@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from llm_tracker.models import AnalysisResult
+from llm_tracker.confidence import prepare_llm_results, validate_rounding
 from llm_tracker.outputs import RunOutput, source_run, export_quotes
 
 
@@ -19,11 +20,18 @@ def compare_presence(
     output_dir: Path | str | None = None,
     master_output_dir: Path | str | None = None,
     model_name: str | None = None,
+    rounding_method: str = "floor",
+    binarize_confidence: bool = True,
 ) -> pd.DataFrame:
     """Compare whether each coder detected each construct in each document.
 
-    Makes no API calls. Presence means at least one instance exists, regardless
-    of confidence, quote text, or number of instances. Pass the full construct
+    Makes no API calls. LLM presence means at least one positive-scored instance
+    after conversion. rounding_method="floor" (default) maps 0/1 to 0 and 2 to 1;
+    "ceiling" maps 0 to 0 and 1/2 to 1. binarize_confidence=False skips conversion
+    for already-binary data (and retains other positive scores unchanged).
+    Explicit zero instances mean absence, not detection; no document/construct
+    rows are removed. Human detections/scores are unchanged. Quote text and
+    repeated detections do not affect the binary decision. Pass the full construct
     roster (usually codebook keys) so constructs neither coder detected are
     included. Unknown detected constructs raise rather than silently disappear.
 
@@ -46,7 +54,9 @@ def compare_presence(
     compute_binary_metrics(grid) saves the binary table in that same run.
     model_name supplies a fallback when plain loaded dictionaries lack model
     provenance. grid.attrs["output_path"] identifies the actual saved directory.
-    Inputs are never modified.
+    llm_count counts positive LLM instances under the chosen policy. Comparison
+    quote exports retain original confidence and add comparison_confidence;
+    explicit zero records remain in these short-form exports. Inputs are never modified.
     """
 
     def roster(values: Iterable[str], name: str) -> list[str]:
@@ -57,6 +67,7 @@ def compare_presence(
             raise ValueError(f"{name} must contain nonempty strings.")
         return list(dict.fromkeys(items))
 
+    validate_rounding(rounding_method, binarize_confidence)
     names = roster(constructs, "constructs")
     if not names:
         raise ValueError("constructs must include the full, nonempty construct roster.")
@@ -79,9 +90,16 @@ def compare_presence(
             "documents with no detections should have an empty AnalysisResult."
         )
 
+    selected_llm = {doc: llm_results[doc] for doc in docs}
+    prepared_llm = prepare_llm_results(
+        selected_llm,
+        rounding_method=rounding_method,
+        binarize_confidence=binarize_confidence,
+        drop_zeros=False,
+    )
     allowed = set(names)
     counts: dict[str, dict[str, Counter]] = {}
-    for label, results in (("human", human_results), ("llm", llm_results)):
+    for label, results in (("human", human_results), ("llm", prepared_llm)):
         counts[label] = {}
         for doc in docs:
             result = results[doc]
@@ -99,6 +117,12 @@ def compare_presence(
                 raise ValueError(
                     f"Unknown {label} constructs in document {doc!r}: {unknown}. "
                     "Check construct names and the supplied construct roster."
+                )
+            if label == "llm":
+                doc_counts = Counter(
+                    instance.construct
+                    for instance in result.instances
+                    if instance.confidence > 0
                 )
             counts[label][doc] = doc_counts
 
@@ -142,6 +166,9 @@ def compare_presence(
             "tn",
         ],
     )
+    grid.attrs.update(
+        rounding_method=rounding_method, binarize_confidence=binarize_confidence
+    )
     source = source_run(llm_results)
     human = source_run(human_results)
     root = (
@@ -162,8 +189,16 @@ def compare_presence(
             construct_count=len(names),
             comparison_rows=len(grid),
             matching_model="N/A",
+            rounding_method=rounding_method,
+            binarize_confidence=binarize_confidence,
         )
         run.table("presence_grid", grid)
-        export_quotes(run, {doc: llm_results[doc] for doc in docs})
+        export_quotes(
+            run,
+            selected_llm,
+            rounding_method=rounding_method,
+            binarize_confidence=binarize_confidence,
+            drop_zeros=False,
+        )
         run.finish()
     return grid

@@ -384,10 +384,30 @@ def usage_totals(metas, *, pending=False):
     )
 
 
-def export_quotes(run, results, *, encoding=False):
+def export_quotes(
+    run,
+    results,
+    *,
+    encoding=False,
+    rounding_method=None,
+    binarize_confidence=True,
+    drop_zeros=False,
+):
     from llm_tracker.utils import format_coding_table
 
     quotes = format_coding_table(results)
+    if rounding_method is not None:
+        from llm_tracker.confidence import comparison_confidence
+
+        quotes["comparison_confidence"] = quotes["confidence"].map(
+            lambda value: comparison_confidence(
+                value,
+                rounding_method=rounding_method,
+                binarize_confidence=binarize_confidence,
+            )
+        )
+        if drop_zeros:
+            quotes = quotes[quotes["comparison_confidence"] > 0].reset_index(drop=True)
     run.table("llm_quotes", quotes, folder="DF" if encoding else None)
     if not encoding:
         run.table(
@@ -494,6 +514,7 @@ def comparison_run(func):
         run.update(
             mode="quote_matching",
             binarize_confidence=bound.arguments.get("binarize_confidence"),
+            rounding_method=bound.arguments.get("rounding_method", "floor"),
         )
         bound.arguments["output_dir"] = None
         token = ACTIVE_RUN.set(run)
@@ -501,7 +522,13 @@ def comparison_run(func):
             frame = func(*bound.args, **bound.kwargs)
             run.table("comparison_rows", frame)
             self.output_path = run.path
-            export_quotes(run, bound.arguments["llm_results"])
+            export_quotes(
+                run,
+                bound.arguments["llm_results"],
+                rounding_method=bound.arguments["rounding_method"],
+                binarize_confidence=bound.arguments["binarize_confidence"],
+                drop_zeros=True,
+            )
             count = len(
                 set(bound.arguments["human_results"])
                 | set(bound.arguments["llm_results"])
@@ -587,6 +614,12 @@ def optimization_run(func):
             requested_reruns=bound.arguments["rerun_optimized_codebook"],
             source_comparison_run_id=bound.arguments["comparison_df"].attrs.get(
                 "run_id", "unavailable"
+            ),
+            rounding_method=bound.arguments["comparison_df"].attrs.get(
+                "rounding_method", "floor"
+            ),
+            binarize_confidence=bound.arguments["comparison_df"].attrs.get(
+                "binarize_confidence", True
             ),
         )
         run.update(**fields)

@@ -583,16 +583,18 @@ class BatchAnalyzerMixin:
                 # Existing parser skips invalid individual instances. For batch
                 # coding reject the document instead of inventing empty absence.
                 for instance in data["instances"]:
+                    if isinstance(instance, dict) and instance.get("confidence") == 0:
+                        instance = {"quote": "", **instance}
                     ConstructInstance.model_validate(instance)
-                    if (
-                        not instance.get("construct", "").strip()
-                        or not instance.get("quote", "").strip()
+                    if not instance.get("construct", "").strip() or (
+                        instance.get("confidence") != 0
+                        and not instance.get("quote", "").strip()
                     ):
                         raise ValueError(
                             "Instance construct and quote must be nonempty."
                         )
-                    if instance.get("confidence") not in (1, 2):
-                        raise ValueError("LLM instance confidence must be 1 or 2.")
+                    if instance.get("confidence") not in (0, 1, 2):
+                        raise ValueError("LLM instance confidence must be 0, 1, or 2.")
                 result = parse_llm_response(
                     text,
                     doc_id,

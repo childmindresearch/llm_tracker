@@ -11,6 +11,8 @@ from llm_tracker.outputs import (
     atomic_json,
 )
 
+from llm_tracker.confidence import prepare_llm_results
+
 import copy
 import json
 import random
@@ -557,6 +559,7 @@ class LLMTrackerComparer:
         output_dir: str | None = None,
         *,
         binarize_confidence: bool = True,
+        rounding_method: str = "floor",
     ) -> pd.DataFrame:
         """Compare human and LLM results across all documents.
 
@@ -568,11 +571,15 @@ class LLMTrackerComparer:
                 config.master_output_dir takes precedence when configured.
                 self.output_path is the actual saved run directory; returned
                 DataFrame attrs carry that directory to summary/table functions.
-            binarize_confidence: Map LLM confidence 1 to 0 and 2 to 1 in the
-                returned/saved comparison table. Defaults to True. Original
-                analysis results and human scores are unchanged. This only
-                relabels scores: it does not filter detections or change matches.
-                Set False to retain original scores or for already-binary input.
+            binarize_confidence: Convert LLM confidence using rounding_method
+                before quote matching. True by default. Set False for already-
+                binary inputs (or to retain original positive scores). Explicit
+                zero-scored LLM quotes are ALWAYS dropped before matching, even
+                with conversion off. Human coding and original inputs are unchanged.
+            rounding_method: "floor" (default): 0/1 -> 0, 2 -> 1. "ceiling":
+                0 -> 0, 1/2 -> 1. Choose one; "both" is not supported. Floor may
+                change matches and metrics because low-confidence quotes are
+                removed, rather than merely relabelled after matching.
 
         Returns:
         -------
@@ -581,12 +588,18 @@ class LLMTrackerComparer:
 
         """
         self.output_path = None
+        prepared_llm = prepare_llm_results(
+            llm_results,
+            rounding_method=rounding_method,
+            binarize_confidence=binarize_confidence,
+            drop_zeros=True,
+        )
         rows = []
 
-        document_ids = sorted(set(human_results) | set(llm_results))
+        document_ids = sorted(set(human_results) | set(prepared_llm))
         for doc_id in document_ids:
             human_result = human_results.get(doc_id)
-            llm_result = llm_results.get(doc_id)
+            llm_result = prepared_llm.get(doc_id)
             human_instances = human_result.instances if human_result else []
             llm_instances = llm_result.instances if llm_result else []
 
@@ -606,12 +619,10 @@ class LLMTrackerComparer:
 
         df = pd.DataFrame(rows, columns=COMPARISON_COLUMNS)
         if not df.empty:
-            if binarize_confidence:
-                confidence_remap = {1: 0, 2: 1}
-                df["llm_confidence"] = df["llm_confidence"].map(
-                    lambda score: confidence_remap.get(score, score)
-                )
             df[["tp", "fp", "fn"]] = df[["tp", "fp", "fn"]].astype(int)
+        df.attrs.update(
+            rounding_method=rounding_method, binarize_confidence=binarize_confidence
+        )
         if output_dir:
             self.output_path = _save_comparison_table(df, output_dir)
         return df
@@ -623,6 +634,7 @@ class LLMTrackerComparer:
         output_dir: str | None = None,
         *,
         binarize_confidence: bool = True,
+        rounding_method: str = "floor",
     ) -> pd.DataFrame:
         """Compare one reference result JSON with one LLM result JSON.
 
@@ -631,8 +643,10 @@ class LLMTrackerComparer:
             human_json: Path to the reference result JSON file.
             llm_json: Path to the LLM result JSON file.
             output_dir: Optional base name for saving the comparison table.
-            binarize_confidence: Relabel LLM scores 1 to 0 and 2 to 1, as in
-                compare_results. Defaults to True; no detections are filtered.
+            binarize_confidence: As in compare_results; False skips conversion.
+                Zero-scored LLM instances are dropped before quote matching.
+            rounding_method: "floor" (default) or "ceiling"; forwarded to
+                compare_results. Originals and human scores are unchanged.
 
         Returns:
         -------
@@ -653,6 +667,7 @@ class LLMTrackerComparer:
             {doc_id: llm_result},
             output_dir=output_dir,
             binarize_confidence=binarize_confidence,
+            rounding_method=rounding_method,
         )
 
     def compare_directories(
@@ -662,6 +677,7 @@ class LLMTrackerComparer:
         output_dir: str | None = None,
         *,
         binarize_confidence: bool = True,
+        rounding_method: str = "floor",
     ) -> pd.DataFrame:
         """Compare reference and LLM result directories.
 
@@ -670,8 +686,10 @@ class LLMTrackerComparer:
             human_dir: Path to a reference result directory or encodings folder.
             llm_dir: Path to an LLM result directory or encodings folder.
             output_dir: Optional base name for saving the comparison table.
-            binarize_confidence: Relabel LLM scores 1 to 0 and 2 to 1, as in
-                compare_results. Defaults to True; no detections are filtered.
+            binarize_confidence: As in compare_results; False skips conversion.
+                Zero-scored LLM instances are dropped before quote matching.
+            rounding_method: "floor" (default) or "ceiling"; forwarded to
+                compare_results. Originals and human scores are unchanged.
 
         Returns:
         -------
@@ -708,6 +726,7 @@ class LLMTrackerComparer:
             llm_results,
             output_dir=output_dir,
             binarize_confidence=binarize_confidence,
+            rounding_method=rounding_method,
         )
 
 
@@ -1093,55 +1112,142 @@ def _format_doc_stats(row: pd.Series) -> str:
     return f"{document_count} [{p5:.2f}-{p95:.2f}]"
 
 
+def _format_distribution(series: pd.Series) -> str:
+    """Format valid construct values with sample SD and linear percentiles."""
+    values = (
+        pd.to_numeric(series, errors="coerce")
+        .replace([np.inf, -np.inf], np.nan)
+        .dropna()
+    )
+    if values.empty:
+        return "-"
+    percentiles = values.quantile([0.05, 0.25, 0.50, 0.75, 0.95])
+    sd = values.std(ddof=1)
+    sd_text = "N/A" if pd.isna(sd) else f"{sd:.2f}"
+    spread = ", ".join(f"{value:.2f}" for value in percentiles)
+    return f"{values.mean():.2f} ({sd_text}) [{spread}]"
+
+
 def format_concatenated(
     concatenated: pd.DataFrame,
     *,
     metrics: list[str] | None = None,
+    min_count: int = 10,
 ) -> pd.DataFrame:
-    """Format pooled construct metrics for notebook display.
+    """Format construct metrics and two across-construct summary rows.
+
+    Each metric in Overall is mean (sample SD) [p5, p25, p50, p75, p95]
+    across non-Overall construct rows, with equal weight per construct. The
+    second summary uses only constructs with tp + fp + fn >= min_count.
+    Missing/nonfinite values are excluded separately for each metric; these
+    are distributions of construct-level scores, not pooled micro metrics.
+
+    Following issue #47, count columns show distributions for multi-transcript
+    tables, and sum followed by distribution for single-transcript tables.
+    The raw Overall n_docs identifies multi-transcript tables; if it is absent,
+    the issue's fallback (mean construct n_docs > 1) is used. The formatted
+    document-stat column is blank on summary rows, as in the issue's example.
 
     Args:
     ----
-        concatenated: Pooled construct metrics from compute_summary_tables.
-        metrics: Metrics to display, in the requested order. Defaults to all:
-            sensitivity, precision, f1, jaccard, and pr_auc. Pass an empty list
-            to show only counts and document statistics.
+        concatenated: Numeric pooled table from compute_summary_tables.
+            Its existing Overall row is excluded from distribution calculations.
+        metrics: Metrics to display, in requested order. Defaults to sensitivity,
+            precision, f1, jaccard, and pr_auc. [] shows counts/document stats only.
+        min_count: Nonnegative integer cutoff on tp + fp + fn, inclusive.
+            Defaults to 10. This filters only the second summary, not construct
+            rows or the first summary. The extra count column displays this sum.
 
     Returns:
     -------
-        Display DataFrame with rounded metrics and formatted document stats.
-
-    Raises:
-    ------
-        TypeError: If metrics is a string instead of a list of names.
-        ValueError: If a requested metric is not supported.
+        A new display DataFrame. Construct rows retain two-decimal metrics;
+        Overall and Overall (count >= cutoff; n = qualifying constructs) contain
+        distribution strings. Undefined distributions display '-', and sample
+        SD with one value displays 'N/A'. Numeric input and pooled metrics are
+        unchanged. This formatter does not automatically save a separate CSV.
 
     """
+    from numbers import Integral
+
+    if (
+        isinstance(min_count, bool)
+        or not isinstance(min_count, Integral)
+        or min_count < 0
+    ):
+        raise ValueError("min_count must be a nonnegative integer, e.g. 10.")
     available_metrics = [*METRICS, "pr_auc"]
     if isinstance(metrics, str):
         raise TypeError("metrics must be a list of names, e.g. ['f1', 'pr_auc'].")
-    selected_metrics = available_metrics if metrics is None else metrics
+    selected_metrics = available_metrics if metrics is None else list(metrics)
     unknown = [metric for metric in selected_metrics if metric not in available_metrics]
     if unknown:
         raise ValueError(
             f"Unknown metrics: {unknown}. Choose from: {available_metrics}."
         )
-
     if concatenated.empty:
-        return concatenated
+        return concatenated.copy()
 
-    display_columns = ["construct", "tp", "fp", "fn"]
-    display = concatenated[display_columns].copy()
-
-    for metric in selected_metrics:
-        display[metric] = concatenated[metric].apply(
-            lambda value: "-" if pd.isna(value) else f"{value:.2f}"
+    overall = concatenated[concatenated["construct"] == "Overall"]
+    constructs = concatenated[concatenated["construct"] != "Overall"].copy()
+    # Do not round metric values before calculating distribution statistics.
+    numeric_counts = constructs[["tp", "fp", "fn"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    constructs["count"] = numeric_counts.sum(axis=1, min_count=3)
+    overall_docs = pd.to_numeric(overall["n_docs"], errors="coerce").dropna()
+    if not overall_docs.empty:
+        multi_transcript = overall_docs.max() > 1
+    else:
+        multi_transcript = (
+            pd.to_numeric(constructs["n_docs"], errors="coerce").mean() > 1
         )
 
-    display["interviews_with_construct [p5-p95]"] = concatenated.apply(
-        _format_doc_stats, axis=1
+    count_columns = ["tp", "fp", "fn", "count"]
+    display = constructs[["construct", *count_columns]].copy()
+    for metric in selected_metrics:
+        display[metric] = constructs[metric].apply(
+            lambda value: "-" if pd.isna(value) else f"{value:.2f}"
+        )
+    doc_column = "interviews_with_construct [p5-p95]"
+    display[doc_column] = (
+        pd.Series(index=display.index, dtype=object)
+        if constructs.empty
+        else constructs.apply(_format_doc_stats, axis=1)
     )
-    return display
+
+    def summary(frame: pd.DataFrame, label: str) -> dict:
+        row = {column: "" for column in display.columns}
+        row["construct"] = label
+        for column in count_columns:
+            dist = _format_distribution(frame[column])
+            if multi_transcript:
+                row[column] = dist
+            else:
+                total = pd.to_numeric(frame[column], errors="coerce").dropna().sum()
+                row[column] = f"{total:.0f} {dist}"
+        for metric in selected_metrics:
+            row[metric] = _format_distribution(frame[metric])
+        return row
+
+    qualifying = constructs[constructs["count"] >= min_count]
+    summaries = pd.DataFrame(
+        [
+            summary(constructs, "Overall"),
+            summary(
+                qualifying, f"Overall (count >= {min_count}; n = {len(qualifying)})"
+            ),
+        ]
+    )
+    out = pd.concat([display, summaries], ignore_index=True)
+    out.attrs = dict(concatenated.attrs)
+    out.attrs.update(
+        summary_min_count=int(min_count),
+        summary_weighting="equal_per_construct",
+        summary_n_constructs=len(constructs),
+        summary_n_qualifying_constructs=len(qualifying),
+        summary_multi_transcript=bool(multi_transcript),
+    )
+    return out
 
 
 def format_weighted_summary(weighted_summary: pd.DataFrame) -> pd.DataFrame:
@@ -1609,7 +1715,12 @@ def optimize_codebook(
         # Compare against human data filtered to the partial's constructs.
         flagged = set(partial["codebook"].keys())
         filtered_human = _filter_human_results(human_results, flagged)
-        new_comparison = comparer.compare_results(filtered_human, llm_results)
+        new_comparison = comparer.compare_results(
+            filtered_human,
+            llm_results,
+            rounding_method=comparison_df.attrs.get("rounding_method", "floor"),
+            binarize_confidence=comparison_df.attrs.get("binarize_confidence", True),
+        )
         _per_doc, new_concat, _weighted = compute_summary_tables(new_comparison)
 
         # Refine again, accumulating onto the previous partial's entries.
