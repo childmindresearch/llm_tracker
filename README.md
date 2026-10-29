@@ -37,6 +37,24 @@ For tutorial extras such as corpus summaries:
 poetry install --with tutorials
 ```
 
+## Local manual review (optional)
+
+Review classification workbooks or the package's `comparison_rows.csv` in a
+local browser app. It supports reviewer-specific save/resume, adjudication,
+notes, follow-up flags, and CSV/JSON exports. No API key or LLM calls are needed.
+
+From a checkout:
+
+```bash
+python -m pip install ".[review]"
+llm-tracker-review demo review-demo
+llm-tracker-review run review-demo/classifications.csv --codebook review-demo/codebook.json
+```
+
+For installation without a checkout, input schemas, reviewer instructions,
+combining exports, and storage details, see the
+[review workbench guide](docs/review_workbench.md).
+
 ## API Key
 
 LLM Tracker uses any-llm API for LLM calls, which can run the most common APIs (OpenRouter, Azure, Ollama). For instance, you can add an OpenRouter API key by adding a few dollars here https://openrouter.ai/. Each LLM call tends to cost a a fraction of a cent (see cost for specific models on OpenRouter). Provide an API key directly:
