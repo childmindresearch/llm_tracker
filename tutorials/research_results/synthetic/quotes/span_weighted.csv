@@ -1,0 +1,5 @@
+construct,tp,fp,fn,sensitivity_median,sensitivity_min,sensitivity_max,precision_median,precision_min,precision_max,f1_median,f1_min,f1_max,jaccard_median,jaccard_min,jaccard_max,pr_auc_median,pr_auc_min,pr_auc_max,n_docs,p5,p95
+anxiety,2,0,0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,,,,2,0.0,1.0
+self_management,2,0,0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,,,,2,0.0,1.0
+social_support,2,0,0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,,,,2,0.0,1.0
+Overall,6,0,0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,,,,4,0.0,1.0

@@ -1,0 +1,7 @@
+doc_id,construct,status,human_quote,llm_quote,human_indices,llm_indices,human_confidence,llm_confidence,paraphrase,span_overlap,match_confidence,tp,fp,fn
+doc01,anxiety,matched,I feel worried about my exams.,I feel worried about my exams.,,0:30,,1,False,,1.0,1,0,0
+doc01,self_management,matched,I take a walk each evening to manage my stress,I take a walk each evening to manage my stress,,74:120,,1,False,,1.0,1,0,0
+doc01,social_support,matched,My sister listens when I need to talk,My sister listens when I need to talk,,31:68,,1,False,,1.0,1,0,0
+doc02,anxiety,matched,I worry every night and I cannot sleep because my mind keeps racing.,I worry every night and I cannot sleep because my mind keeps racing.,,0:68,,1,False,,1.0,1,0,0
+doc03,social_support,matched,My friend helped me carry my groceries when I was overwhelmed,"My friend helped me carry my groceries when I was overwhelmed, and it meant a lot.",,0:82,,1,False,,0.98,1,0,0
+doc04,self_management,matched,I started journaling every morning to keep track of my moods.,I started journaling every morning to keep track of my moods.,,0:61,,1,False,,1.0,1,0,0

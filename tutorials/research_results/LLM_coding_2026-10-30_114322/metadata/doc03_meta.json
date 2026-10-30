@@ -1,0 +1,103 @@
+{
+  "model": "google/gemini-3.8-flash",
+  "usage": {
+    "completion_tokens": 502,
+    "prompt_tokens": 567,
+    "total_tokens": 1069,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 434,
+      "rejected_prediction_tokens": null,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost": 0.00230775,
+    "is_byok": false,
+    "cost_details": {
+      "upstream_inference_cost": 0.00230775,
+      "upstream_inference_prompt_cost": 0.00042525,
+      "upstream_inference_completions_cost": 0.0018825
+    }
+  },
+  "created": 1793375017,
+  "response_id": "gen-1793375017-lHqfmy4DIQ5jDp44GSk0",
+  "latency_ms": 4339.34211730957,
+  "raw_response": {
+    "id": "gen-1793375017-lHqfmy4DIQ5jDp44GSk0",
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "{\n  \"instances\": [\n    {\n      \"construct\": \"social_support\",\n      \"speaker_id\": null,\n      \"quote\": \"My friend helped me carry my groceries when I was overwhelmed, and it meant a lot.\",\n      \"confidence\": 2\n    }\n  ]\n}",
+          "refusal": null,
+          "role": "assistant",
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": null,
+          "reasoning": "**Analyzing Overwhelmed**\n\nI'm currently dissecting the nuanced meaning of \"overwhelmed\" in relation to anxiety. My initial thought is that it strongly implies a state of being overwhelmed by feelings, which directly aligns with the definition of anxiety. I'm considering the subtle differences, if any, between feeling overwhelmed and experiencing anxiety itself.\n\n**Clarifying Support Nuances**\n\nI'm now focusing on how \"overwhelmed\" interacts with descriptions of social support. It appears \"overwhelmed\" itself isn't the direct indicator of support, but rather the context around it. I'm exploring whether to capture the entire supportive clause or just the core action.\n\n",
+          "extra_content": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "text": "**Analyzing Overwhelmed**\n\nI'm currently dissecting the nuanced meaning of \"overwhelmed\" in relation to anxiety. My initial thought is that it strongly implies a state of being overwhelmed by feelings, which directly aligns with the definition of anxiety. I'm considering the subtle differences, if any, between feeling overwhelmed and experiencing anxiety itself.\n\n**Clarifying Support Nuances**\n\nI'm now focusing on how \"overwhelmed\" interacts with descriptions of social support. It appears \"overwhelmed\" itself isn't the direct indicator of support, but rather the context around it. I'm exploring whether to capture the entire supportive clause or just the core action.\n\n",
+              "format": "google-gemini-v1",
+              "index": 0
+            },
+            {
+              "type": "reasoning.encrypted",
+              "data": "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",
+              "format": "google-gemini-v1",
+              "index": 1
+            }
+          ]
+        },
+        "native_finish_reason": "STOP"
+      }
+    ],
+    "created": 1793375017,
+    "model": "google/gemini-3.8-flash",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": "provisioned",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 502,
+      "prompt_tokens": 567,
+      "total_tokens": 1069,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 434,
+        "rejected_prediction_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost": 0.00230775,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.00230775,
+        "upstream_inference_prompt_cost": 0.00042525,
+        "upstream_inference_completions_cost": 0.0018825
+      }
+    },
+    "provider": "Google"
+  },
+  "num_retries": 0,
+  "error_message": null,
+  "error_type": null,
+  "error_output": null
+}

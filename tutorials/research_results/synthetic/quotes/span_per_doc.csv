@@ -1,0 +1,7 @@
+doc_id,construct,tp,fp,fn,union,sensitivity,precision,f1,jaccard,pr_auc
+doc01,anxiety,1,0,0,1,1.0,1.0,1.0,1.0,
+doc01,self_management,1,0,0,1,1.0,1.0,1.0,1.0,
+doc01,social_support,1,0,0,1,1.0,1.0,1.0,1.0,
+doc02,anxiety,1,0,0,1,1.0,1.0,1.0,1.0,
+doc03,social_support,1,0,0,1,1.0,1.0,1.0,1.0,
+doc04,self_management,1,0,0,1,1.0,1.0,1.0,1.0,

@@ -1,0 +1,12 @@
+{
+  "document_id": "doc03",
+  "instances": [
+    {
+      "construct": "social_support",
+      "speaker_id": null,
+      "quote": "My friend helped me carry my groceries when I was overwhelmed, and it meant a lot.",
+      "quote_index": "0:82",
+      "confidence": 2
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+construct,tp,fp,fn,union,sensitivity,precision,f1,jaccard,n_docs,p5,p95,pr_auc
+anxiety,2,0,0,2,1.0,1.0,1.0,1.0,2,0.0,1.0,
+self_management,2,0,0,2,1.0,1.0,1.0,1.0,2,0.0,1.0,
+social_support,2,0,0,2,1.0,1.0,1.0,1.0,2,0.0,1.0,
+Overall,6,0,0,6,1.0,1.0,1.0,1.0,4,0.0,1.0,

@@ -1,0 +1,23 @@
+{
+  "anxiety": {
+    "definition": "The speaker describes their own worry, fear, or nervousness.",
+    "examples": [
+      "I am worried about tomorrow's exam.",
+      "I feel nervous all the time."
+    ]
+  },
+  "social_support": {
+    "definition": "The speaker describes receiving emotional or practical help from another person.",
+    "examples": [
+      "My friend listened and helped me feel less alone.",
+      "My sister helped me when I was struggling."
+    ]
+  },
+  "self_management": {
+    "definition": "The speaker describes an action they take to manage their own mental health outside of formal treatment.",
+    "examples": [
+      "I take a walk to manage my stress.",
+      "I journal every morning to track my moods."
+    ]
+  }
+}

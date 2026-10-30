@@ -1,0 +1,26 @@
+{
+  "document_id": "doc01",
+  "instances": [
+    {
+      "construct": "anxiety",
+      "speaker_id": null,
+      "quote": "I feel worried about my exams.",
+      "quote_index": "0:30",
+      "confidence": 2
+    },
+    {
+      "construct": "social_support",
+      "speaker_id": null,
+      "quote": "My sister listens when I need to talk",
+      "quote_index": "31:68",
+      "confidence": 2
+    },
+    {
+      "construct": "self_management",
+      "speaker_id": null,
+      "quote": "I take a walk each evening to manage my stress",
+      "quote_index": "74:120",
+      "confidence": 2
+    }
+  ]
+}

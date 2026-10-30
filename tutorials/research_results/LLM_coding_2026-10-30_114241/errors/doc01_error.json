@@ -1,0 +1,7 @@
+{
+  "document_id": "doc01",
+  "document_path": "/Users/camilla.strauss/Desktop/llm_tracker/sample_data/tutorial_practice/documents.csv",
+  "error_message": "Failed after 1 attempts for document 'doc01'. Last error: API request failed: Error code: 401 - {'error': {'message': 'Missing Authentication header', 'code': 401}}",
+  "model_used": "~google/gemini-flash-latest",
+  "timestamp": "2026-10-30T11:42:42.147546"
+}

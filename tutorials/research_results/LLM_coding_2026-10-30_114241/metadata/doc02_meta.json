@@ -1,0 +1,12 @@
+{
+  "model": "~google/gemini-flash-latest",
+  "usage": null,
+  "created": null,
+  "response_id": null,
+  "latency_ms": null,
+  "raw_response": null,
+  "num_retries": 0,
+  "error_message": "API request failed: Error code: 401 - {'error': {'message': 'Missing Authentication header', 'code': 401}}",
+  "error_type": "PromptingError",
+  "error_output": "API request failed: Error code: 401 - {'error': {'message': 'Missing Authentication header', 'code': 401}}"
+}

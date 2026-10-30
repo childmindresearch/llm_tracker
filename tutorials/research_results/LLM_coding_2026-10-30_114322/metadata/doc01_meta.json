@@ -1,0 +1,103 @@
+{
+  "model": "google/gemini-3.8-flash",
+  "usage": {
+    "completion_tokens": 598,
+    "prompt_tokens": 577,
+    "total_tokens": 1175,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 446,
+      "rejected_prediction_tokens": null,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost": 0.00267525,
+    "is_byok": false,
+    "cost_details": {
+      "upstream_inference_cost": 0.00267525,
+      "upstream_inference_prompt_cost": 0.00043275,
+      "upstream_inference_completions_cost": 0.0022425
+    }
+  },
+  "created": 1793375002,
+  "response_id": "gen-1793375002-90uk710FmwoD5Wb6LoKJ",
+  "latency_ms": 4490.671873092651,
+  "raw_response": {
+    "id": "gen-1793375002-90uk710FmwoD5Wb6LoKJ",
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "{\n  \"instances\": [\n    {\n      \"construct\": \"anxiety\",\n      \"speaker_id\": null,\n      \"quote\": \"I feel worried about my exams.\",\n      \"confidence\": 2\n    },\n    {\n      \"construct\": \"social_support\",\n      \"speaker_id\": null,\n      \"quote\": \"My sister listens when I need to talk\",\n      \"confidence\": 2\n    },\n    {\n      \"construct\": \"self_management\",\n      \"speaker_id\": null,\n      \"quote\": \"I take a walk each evening to manage my stress\",\n      \"confidence\": 2\n    }\n  ]\n}",
+          "refusal": null,
+          "role": "assistant",
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": null,
+          "reasoning": "**Extracting Psychological Constructs**\n\nI'm currently focused on identifying instances of \"anxiety\" within the provided text, specifically by looking for expressions of worry or fear related to the upcoming exams.\n\n**Identifying Core Themes**\n\nI'm now consolidating the identified psychological constructs, primarily focusing on direct expressions of \"anxiety\" as indicated by worry about exams. This initial pass has also highlighted instances of \"social_support\" and \"self_management.\"\n\n",
+          "extra_content": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "text": "**Extracting Psychological Constructs**\n\nI'm currently focused on identifying instances of \"anxiety\" within the provided text, specifically by looking for expressions of worry or fear related to the upcoming exams.\n\n**Identifying Core Themes**\n\nI'm now consolidating the identified psychological constructs, primarily focusing on direct expressions of \"anxiety\" as indicated by worry about exams. This initial pass has also highlighted instances of \"social_support\" and \"self_management.\"\n\n",
+              "format": "google-gemini-v1",
+              "index": 0
+            },
+            {
+              "type": "reasoning.encrypted",
+              "data": "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",
+              "format": "google-gemini-v1",
+              "index": 1
+            }
+          ]
+        },
+        "native_finish_reason": "STOP"
+      }
+    ],
+    "created": 1793375002,
+    "model": "google/gemini-3.8-flash",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 598,
+      "prompt_tokens": 577,
+      "total_tokens": 1175,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 446,
+        "rejected_prediction_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost": 0.00267525,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.00267525,
+        "upstream_inference_prompt_cost": 0.00043275,
+        "upstream_inference_completions_cost": 0.0022425
+      }
+    },
+    "provider": "Google"
+  },
+  "num_retries": 0,
+  "error_message": null,
+  "error_type": null,
+  "error_output": null
+}

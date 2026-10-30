@@ -1,0 +1,83 @@
+{
+  "document_id": "synthetic_interview",
+  "model": "~typesafe/jev-latest",
+  "label_threshold": 0.5,
+  "codebook": {
+    "anxiety": {
+      "definition": "The speaker describes their own worry, fear, or nervousness.",
+      "examples": [
+        "I am worried about tomorrow's exam."
+      ],
+      "counter_examples": [
+        "I feel calm about tomorrow's exam."
+      ]
+    },
+    "loneliness": {
+      "definition": "The speaker describes feeling alone, isolated, or lacking meaningful connection with other people.",
+      "examples": [
+        "I have nobody to talk to since I moved here."
+      ],
+      "counter_examples": [
+        "I enjoy having a quiet evening by myself."
+      ]
+    },
+    "anger": {
+      "definition": "The speaker describes their own anger, frustration, or irritation toward someone or something.",
+      "examples": [
+        "I was furious when my roommate ignored me again."
+      ],
+      "counter_examples": [
+        "My roommate seemed annoyed, but I didn't mind."
+      ]
+    }
+  },
+  "spans": [
+    {
+      "span_id": 1,
+      "span": "Participant: I feel nervous about my exams, and I have no one to talk to about it since my friends moved away.",
+      "labels": [
+        "anxiety",
+        "loneliness"
+      ],
+      "scores": {
+        "anxiety": 0.98,
+        "loneliness": 0.96,
+        "anger": 0.02
+      }
+    },
+    {
+      "span_id": 2,
+      "span": "Participant: I was so angry when my manager blamed me for his mistake.",
+      "labels": [
+        "anger"
+      ],
+      "scores": {
+        "anxiety": 0.02,
+        "loneliness": 0.02,
+        "anger": 0.99
+      }
+    },
+    {
+      "span_id": 3,
+      "span": "Participant: Most evenings I eat dinner alone and feel completely cut off.",
+      "labels": [
+        "loneliness"
+      ],
+      "scores": {
+        "anxiety": 0.07,
+        "loneliness": 0.97,
+        "anger": 0.03
+      }
+    },
+    {
+      "span_id": 4,
+      "span": "Participant: The library opens at nine on weekdays.",
+      "labels": [],
+      "scores": {
+        "anxiety": 0.01,
+        "loneliness": 0.01,
+        "anger": 0.01
+      }
+    }
+  ]
+}
