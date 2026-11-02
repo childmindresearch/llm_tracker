@@ -1,0 +1,5 @@
+document_id,span_id,span,labels,anxiety_score,loneliness_score,anger_score
+synthetic_interview,1,"Participant: I feel nervous about my exams, and I have no one to talk to about it since my friends moved away.",anxiety; loneliness,0.98,0.95,0.02
+synthetic_interview,2,Participant: I was so angry when my manager blamed me for his mistake.,anger,0.02,0.02,0.99
+synthetic_interview,3,Participant: Most evenings I eat dinner alone and feel completely cut off.,loneliness,0.06,0.98,0.03
+synthetic_interview,4,Participant: The library opens at nine on weekdays.,,0.01,0.01,0.01

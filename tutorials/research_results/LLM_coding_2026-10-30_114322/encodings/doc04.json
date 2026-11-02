@@ -1,0 +1,12 @@
+{
+  "document_id": "doc04",
+  "instances": [
+    {
+      "construct": "self_management",
+      "speaker_id": null,
+      "quote": "I started journaling every morning to keep track of my moods.",
+      "quote_index": "0:61",
+      "confidence": 2
+    }
+  ]
+}

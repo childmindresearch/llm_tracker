@@ -1,0 +1,103 @@
+{
+  "model": "google/gemini-3.8-flash",
+  "usage": {
+    "completion_tokens": 1182,
+    "prompt_tokens": 563,
+    "total_tokens": 1745,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 1119,
+      "rejected_prediction_tokens": null,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost": 0.00485475,
+    "is_byok": false,
+    "cost_details": {
+      "upstream_inference_cost": 0.00485475,
+      "upstream_inference_prompt_cost": 0.00042225,
+      "upstream_inference_completions_cost": 0.0044325
+    }
+  },
+  "created": 1793375007,
+  "response_id": "gen-1793375007-nXElU8Twf4DU2h82I7sl",
+  "latency_ms": 10473.83999824524,
+  "raw_response": {
+    "id": "gen-1793375007-nXElU8Twf4DU2h82I7sl",
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "{\n  \"instances\": [\n    {\n      \"construct\": \"anxiety\",\n      \"speaker_id\": null,\n      \"quote\": \"I worry every night and I cannot sleep because my mind keeps racing.\",\n      \"confidence\": 2\n    }\n  ]\n}",
+          "refusal": null,
+          "role": "assistant",
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": null,
+          "reasoning": "**Identifying Anxiety Triggers**\n\nI'm recognizing a clear pattern of anxiety in the text. The phrase \"I worry every night\" directly indicates the speaker's own feelings of worry, fear, or nervousness, aligning perfectly with the \"anxiety\" construct.\n\n**Detecting Anxiety Indicators**\n\nI'm solidifying my understanding of anxiety indicators. The phrase \"I worry every night\" directly captures the essence of anxious sentiment. I'm now considering whether to include the subsequent clause about racing thoughts to provide a more comprehensive picture, or if the core phrase itself is sufficient for flagging this sentiment.\n\n**Refining Anxiety Quotes**\n\nI'm honing in on the precise wording for anxiety. While \"my mind keeps racing\" is a clear indicator, I'm prioritizing the direct statement \"I worry every night\" as it most directly fulfills the criteria for expressing personal worry.\n\n**Selecting Worry Phrases**\n\nI'm now focusing on extracting the most direct evidence of worry. The phrase \"I worry every night\" is a strong contender, but I'm evaluating if the full sentence, \"I worry every night and I cannot sleep because my mind keeps racing,\" provides a more complete picture of the anxiety being expressed.\n\n",
+          "extra_content": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "text": "**Identifying Anxiety Triggers**\n\nI'm recognizing a clear pattern of anxiety in the text. The phrase \"I worry every night\" directly indicates the speaker's own feelings of worry, fear, or nervousness, aligning perfectly with the \"anxiety\" construct.\n\n**Detecting Anxiety Indicators**\n\nI'm solidifying my understanding of anxiety indicators. The phrase \"I worry every night\" directly captures the essence of anxious sentiment. I'm now considering whether to include the subsequent clause about racing thoughts to provide a more comprehensive picture, or if the core phrase itself is sufficient for flagging this sentiment.\n\n**Refining Anxiety Quotes**\n\nI'm honing in on the precise wording for anxiety. While \"my mind keeps racing\" is a clear indicator, I'm prioritizing the direct statement \"I worry every night\" as it most directly fulfills the criteria for expressing personal worry.\n\n**Selecting Worry Phrases**\n\nI'm now focusing on extracting the most direct evidence of worry. The phrase \"I worry every night\" is a strong contender, but I'm evaluating if the full sentence, \"I worry every night and I cannot sleep because my mind keeps racing,\" provides a more complete picture of the anxiety being expressed.\n\n",
+              "format": "google-gemini-v1",
+              "index": 0
+            },
+            {
+              "type": "reasoning.encrypted",
+              "data": "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",
+              "format": "google-gemini-v1",
+              "index": 1
+            }
+          ]
+        },
+        "native_finish_reason": "STOP"
+      }
+    ],
+    "created": 1793375007,
+    "model": "google/gemini-3.8-flash",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 1182,
+      "prompt_tokens": 563,
+      "total_tokens": 1745,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 1119,
+        "rejected_prediction_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost": 0.00485475,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.00485475,
+        "upstream_inference_prompt_cost": 0.00042225,
+        "upstream_inference_completions_cost": 0.0044325
+      }
+    },
+    "provider": "Google"
+  },
+  "num_retries": 0,
+  "error_message": null,
+  "error_type": null,
+  "error_output": null
+}

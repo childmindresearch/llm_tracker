@@ -1,0 +1,103 @@
+{
+  "model": "google/gemini-3.8-flash",
+  "usage": {
+    "completion_tokens": 303,
+    "prompt_tokens": 561,
+    "total_tokens": 864,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 241,
+      "rejected_prediction_tokens": null,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost": 0.001557,
+    "is_byok": false,
+    "cost_details": {
+      "upstream_inference_cost": 0.001557,
+      "upstream_inference_prompt_cost": 0.00042075,
+      "upstream_inference_completions_cost": 0.00113625
+    }
+  },
+  "created": 1793375022,
+  "response_id": "gen-1793375022-HjWP9srcht3Wq2cO2E9h",
+  "latency_ms": 3004.703998565674,
+  "raw_response": {
+    "id": "gen-1793375022-HjWP9srcht3Wq2cO2E9h",
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "{\n  \"instances\": [\n    {\n      \"construct\": \"self_management\",\n      \"speaker_id\": null,\n      \"quote\": \"I started journaling every morning to keep track of my moods.\",\n      \"confidence\": 2\n    }\n  ]\n}",
+          "refusal": null,
+          "role": "assistant",
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": null,
+          "reasoning": "**Extracting Mental States**\n\nI'm focusing on identifying psychological constructs related to self-care. My current attention is on discerning explicit mentions of mood tracking and general self-management strategies within user narratives.\n\n",
+          "extra_content": null,
+          "reasoning_details": [
+            {
+              "type": "reasoning.text",
+              "text": "**Extracting Mental States**\n\nI'm focusing on identifying psychological constructs related to self-care. My current attention is on discerning explicit mentions of mood tracking and general self-management strategies within user narratives.\n\n",
+              "format": "google-gemini-v1",
+              "index": 0
+            },
+            {
+              "type": "reasoning.encrypted",
+              "data": "AY89a1950g8JmgPtt1zp+bCwdm+ry7QYd7EIQGJJ/1DEa48W0kKguD1ZD8aCWowzY2cHXWE3fdm0yTuOjXCraKrX/BUxPK2D7gF2k6KhXPxqQXweoCSKpUfQCWeXa3NeuzrjWiF9M+PvfAE9QdSJKFfYQVwh0OuSycqc+hi5sIiy9jbUn3EMhlhn8UGQQPsFjw+VOmH9/0f1YNJxmk1D11TmhEKJRVaWCsbljEZLDzGs/1kVKzUTPCI//ueNgNzd/TthnY6vKMYiE89xbAjwuN2Itbr6P5RCDQ6GVftZhISpeNgKLEEMkaRtqtbPjhvNs4B5WpLvA3SwF5+hbyZ//5dTs4M4+Giu3Hgphac0Qte6xoMShxcdoWumvpfGegH9mBTznGjk3imSfOH7qh0hPVyoBZrXxe5qr7N4KC9Jdiz1dX8Yi6G1Yaq7MJQndOerUvXLsEmIgLpjst1+SFwHhbBqfheVE1rKh4hBOVEhva0o0ioqv4amyX2qOmW0JCw2VwfukYfwrwMuARCKCnynvbC2TcThoUoQFRgRgjH3Z1q3Eb4G+NbzX4R/GeQjVcu8XjuwzdNEB62YdSA+8uaInhpE9+PcGAbPRLuNa6fskcplhN9L+IJLOXHqj+qeAllAdPW7aXyr44S3TwhfTtnhqCQmwtF8Id+dU2zSo+hU+BuZ8ebeuW9WvUlaoYtvfIX37sGsQ47nZFjtPr77kDGzt4V84XPKHKhMhxsOZBiR0XeHs1eWP/4+/Fzk2uleheKFfknvW1hvd6Fx7IEPBIIQhlYAoGEkYYkju97F4xZvvNF9vkcql2WKpQTUPamRxUztfA5pVQNrbn9ezjq4119b8HGuCQrmh0ZPCCh3sD8vQ5GZ8QuRXoXLc1nfNAOz7OcDhJ46tdtj/6avDOheKihz4YGRHSUYphq2GgK/L/zWxHCNvmYa/vvdtdk0HQu+bC+bfmBmspahGt+5XhQnf/wXIWiSImkumgkIf02u8S11rc7UDtd0S7WMv6cc2UTepNCufSfClw5pwyCwajOghbKtHKWtLXNlVMVC7yJPVy/5OYE3wwVyM+D822Sg2lPjjP3Ro2q/dAMB8uIsHLn0A4hOSNNwsx3ALDKWFO8C9JhO7MlXKNWVc7BH8+k4JvIUkGsgp06tERZOncsXzj4z8v9nPUUQASBT0NvlUI2MshM1Y3I9m6sHwtbHBOzsRsrCioxEIaTVPJsZwgQt++4AbVM96XLe/yxR0I9HzEONLpLHpXIDJLpxAwbJl+s/vlzcuPIRsplOFbSUiHqpSAEcZFyC0EpHscvOrm3AhxPp4UI+prHv7CeWW9Os4GzasH9y2z6zsAEyh6POJt426KqbidFaDQhvg6oZ0TDVzWliwtmdzPAZVIA/+5W0cgNaIYkrVcgekeP+zjsNxN/UH6qw42mP8MOtQvgZemVcIx4DpNkYVBvMfJvkxJwaEv/u03gBGt5k90QEJKAk2VtOHT/k1Dj/Z7jgH41jtxpx6fDQiqK49IIndeCFA85DAD6r1xkfAYWX8Vlhx80j0CfToAevSlZE0ywduE2BdfDyHELdE7wq3VHUHlLd8C9aps6iGG7wpHurjJbYzWwrc0cqe9ikOUVNB7OafTHIJi5QWVXKMJm9Eoi9eHEui31RJg38/nBVVy8ySyYq7Rfe/IZaDyHS",
+              "format": "google-gemini-v1",
+              "index": 1
+            }
+          ]
+        },
+        "native_finish_reason": "STOP"
+      }
+    ],
+    "created": 1793375022,
+    "model": "google/gemini-3.8-flash",
+    "object": "chat.completion",
+    "moderation": null,
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 303,
+      "prompt_tokens": 561,
+      "total_tokens": 864,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 241,
+        "rejected_prediction_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "cost": 0.001557,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.001557,
+        "upstream_inference_prompt_cost": 0.00042075,
+        "upstream_inference_completions_cost": 0.00113625
+      }
+    },
+    "provider": "Google"
+  },
+  "num_retries": 0,
+  "error_message": null,
+  "error_type": null,
+  "error_output": null
+}

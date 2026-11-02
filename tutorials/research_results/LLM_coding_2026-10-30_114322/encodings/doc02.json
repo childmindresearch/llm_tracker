@@ -1,0 +1,12 @@
+{
+  "document_id": "doc02",
+  "instances": [
+    {
+      "construct": "anxiety",
+      "speaker_id": null,
+      "quote": "I worry every night and I cannot sleep because my mind keeps racing.",
+      "quote_index": "0:68",
+      "confidence": 2
+    }
+  ]
+}
