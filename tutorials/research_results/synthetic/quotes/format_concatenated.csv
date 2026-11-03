@@ -1,0 +1,5 @@
+construct,tp,fp,fn,sensitivity,precision,f1,jaccard,pr_auc,interviews_with_construct [p5-p95]
+anxiety,2,0,0,1.00,1.00,1.00,1.00,-,2 [0.00-1.00]
+self_management,2,0,0,1.00,1.00,1.00,1.00,-,2 [0.00-1.00]
+social_support,2,0,0,1.00,1.00,1.00,1.00,-,2 [0.00-1.00]
+Overall,6,0,0,1.00,1.00,1.00,1.00,-,4 [0.00-1.00]
