@@ -1,6 +1,10 @@
 # MacOS system files
 .DS_Store
 
+# Local review sessions contain source text and reviewer notes.
+review-data/
+review-demo/
+
 # Local test notebooks (private data - do not commit)
 tutorial_local.ipynb
 

@@ -54,6 +54,27 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
 
+  review:
+    name: Review workbench / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The existing NumPy 1.x pin has no Python 3.13 wheels.
+        python-version: [ "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Poetry
+        run: pipx install poetry
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: poetry
+      - name: Install review extra
+        run: poetry install --extras review --no-interaction
+      - name: Test review persistence and UI
+        run: poetry run pytest tests/test_review.py tests/test_review_app.py -v
+
   ruff:
     runs-on: ubuntu-latest
 
