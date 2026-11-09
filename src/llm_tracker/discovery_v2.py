@@ -1754,7 +1754,8 @@ def format_merged_constructs(
     -------
         A display DataFrame whose ``quotes`` column holds up to ``n_quotes``
         quotes joined by ``";\\n"``. Adds document_frequency formatted as
-        '25.0% (N=100)'. N is all successfully processed documents, including
+        '25.0% (25/100 documents)'. Uses the actual document_count, not a count
+        inferred from a rounded percentage. The denominator is all successfully processed documents, including
         empty discoveries; unavailable percentages display as N/A. Raw numeric
         document_frequency_percent and total_documents columns remain unchanged.
 
@@ -1766,12 +1767,14 @@ def format_merged_constructs(
     display = table.copy()
     display["document_frequency"] = [
         (
-            f"{percent:.1f}% (N={int(total)})"
+            f"{percent:.1f}% ({int(count)}/{int(total)} documents)"
             if pd.notna(percent) and pd.notna(total)
             else "N/A"
         )
-        for percent, total in zip(
-            display["document_frequency_percent"], display["total_documents"]
+        for percent, count, total in zip(
+            display["document_frequency_percent"],
+            display["document_count"],
+            display["total_documents"],
         )
     ]
     display["quotes"] = [
@@ -1781,6 +1784,233 @@ def format_merged_constructs(
         for quotes in display["quotes"]
     ]
     return display
+
+
+def build_discovery_tables(
+    discoveries: pd.DataFrame,
+    merged_table: pd.DataFrame,
+    *,
+    total_documents: int | None = None,
+    fuzzy_threshold: float | None = 0.92,
+    output_dir: Path | str | None = None,
+    save_format: str = "both",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build every original quote occurrence and a summary of retained groups.
+
+    Args:
+        discoveries: The ORIGINAL, unfiltered discover() dataframe. Every
+            nonempty quote row is an occurrence, even if another document has
+            identical quote text. Do not pass a deduplicated quote table.
+        merged_table: The raw final merge table after any edits, filtering and
+            reevaluation. Do not pass format_merged_constructs() output, where
+            quote lists have been converted to display strings. Each constituent
+            must occur once. The quote export includes removed constituents too:
+            retained=False and no final merged_construct. The construct summary
+            contains only retained groups.
+        total_documents: Original number of successfully processed documents,
+            including documents with no detections and excluding failures. Uses
+            discoveries.attrs or the merge table's denominator if not supplied.
+            Conflicting totals raise. Unknown document frequency stays N/A.
+        fuzzy_threshold: Used to reconstruct normalized names only if saved
+            name_matches are unavailable. Use the SAME value as merge_constructs.
+            Restore merged_table.attrs from merge_context JSON when reloading to
+            preserve the exact name matches used in the original merge.
+        output_dir: Optional directory for timestamped discovery_quotes and
+            discovery_construct_summary CSV/JSON files, plus a context JSON
+            recording their original denominators. No API calls are made.
+        save_format: csv, json, or both. JSON preserves Examples and Constituents
+            found as lists; their CSV cells are list representations.
+
+    Returns:
+        (all_quotes, construct_summary). all_quotes has one row per nonempty quote
+        occurrence, with filename, doc_id, merged_construct, construct_found,
+        original_construct, description, quote, retained. Removed constituents have
+        no current merged group, but their source information is still preserved.
+        Repeated occurrences are retained. Summary has ONE row per merged group,
+        the eight requested columns, and NO Overall row:
+
+        * Construct / Definition: final merged name and definition.
+        * Construct found % (N): retained distinct constituents in this group /
+          ALL original distinct constituents after normalization/fuzzy matching.
+        * Document count % (N): distinct (filename, doc_id) pairs for this group /
+          ALL original successful documents. Several constituents in one document
+          count as one document. Detections without quotes still count here.
+        * Instance Count % (N): nonempty source quote occurrences for this group /
+          ALL original nonempty quote occurrences, including removed constituents.
+        * Prototypicality mean (SD): equal weight per retained constituent, sample
+          SD (ddof=1), ignoring missing scores. One score has SD=N/A; no scores N/A.
+        * Examples: ALL unique nonempty quote texts for the group; no sampling.
+        * Constituents found: its complete retained normalized constituent list.
+
+        Percentages use the display '50.0% (2/4)' with the actual counts. Original
+        denominators do not shrink after filtering. Zero denominators are N/A.
+        Neither input dataframe is modified. Copies of denominator information
+        are available in the returned dataframe attrs and saved context.
+    """
+    if save_format not in {"csv", "json", "both"}:
+        raise ValueError("save_format must be 'csv', 'json', or 'both'.")
+    _validate_fuzzy_threshold(fuzzy_threshold)
+    missing = set(DISCOVERY_COLUMNS) - set(discoveries)
+    required = {"merged_construct", "construct_found", "definition", "prototypicality"}
+    if missing or required - set(merged_table):
+        raise ValueError(
+            f"Missing discovery columns: {sorted(missing)}; missing merge columns: {sorted(required - set(merged_table))}."
+        )
+
+    source = discoveries.copy(deep=True).reset_index(drop=True)
+    source["_key"] = source["construct"].map(normalize_name)
+    source = source[source["_key"] != ""].copy()
+    final = merged_table.copy(deep=True)
+    final["_key"] = final["construct_found"].map(normalize_name)
+    if final["_key"].eq("").any() or final["_key"].duplicated().any():
+        raise ValueError(
+            "Each construct_found must be usable and occur only once in merged_table."
+        )
+    if any(
+        not isinstance(name, str) or not name.strip()
+        for name in final["merged_construct"]
+    ):
+        raise ValueError("Merged construct names must be nonempty strings.")
+
+    # Saved matches are authoritative, including any nondefault fuzzy threshold.
+    aliases = {}
+    for match in merged_table.attrs.get("name_matches", []):
+        key = normalize_name(match["original_name"])
+        aliases.setdefault(key, normalize_name(match["construct_found"]))
+    if not set(source["_key"]).issubset(aliases):
+        collapsed = collapse_variants(discoveries, fuzzy_threshold=fuzzy_threshold)
+        aliases = {
+            normalize_name(variant): row.norm_key
+            for row in collapsed.itertuples()
+            for variant in row.variants
+        }
+    source["_key"] = source["_key"].map(aliases)
+    unknown = set(final["_key"]) - set(source["_key"])
+    if unknown:
+        raise ValueError(
+            f"Final constituents do not match these discoveries: {sorted(unknown)}. Use the original discoveries, restore merge context, and check fuzzy_threshold."
+        )
+
+    source_total = discoveries.attrs.get("total_documents")
+    merge_total = _table_total(merged_table)
+    known = [
+        value
+        for value in (total_documents, source_total, merge_total)
+        if value is not None
+    ]
+    if any(
+        isinstance(value, bool) or not isinstance(value, Integral) or value < 0
+        for value in known
+    ):
+        raise ValueError("Successful-document totals must be nonnegative integers.")
+    if len(set(known)) > 1:
+        raise ValueError(
+            "Conflicting successful-document totals; use matching discovery and merge results."
+        )
+    total = int(known[0]) if known else None
+    discovered_documents = len(source[["filename", "doc_id"]].drop_duplicates())
+    if total is not None and total < discovered_documents:
+        raise ValueError(
+            "total_documents is smaller than the original discovered document roster."
+        )
+    valid_quote = source["quote"].map(
+        lambda value: isinstance(value, str) and bool(value.strip())
+    )
+    original_constituents = int(source["_key"].nunique())
+    original_instances = int(valid_quote.sum())
+    group_by_member = dict(zip(final["_key"], final["merged_construct"]))
+
+    quote_rows = source.loc[valid_quote].copy()
+    quote_rows["merged_construct"] = quote_rows["_key"].map(group_by_member)
+    quote_rows["construct_found"] = quote_rows["_key"]
+    quote_rows["original_construct"] = quote_rows["construct"]
+    quote_rows["retained"] = quote_rows["_key"].isin(group_by_member)
+    quote_columns = [
+        "filename",
+        "doc_id",
+        "merged_construct",
+        "construct_found",
+        "original_construct",
+        "description",
+        "quote",
+        "retained",
+    ]
+    quotes = quote_rows[quote_columns].reset_index(drop=True)
+
+    def percent(count, denominator):
+        return (
+            f"{100 * count / denominator:.1f}% ({count}/{denominator})"
+            if denominator
+            else "N/A"
+        )
+
+    rows = []
+    for name, group in final.groupby("merged_construct", sort=False):
+        definitions = group["definition"].fillna("").unique()
+        if len(definitions) != 1:
+            raise ValueError(f"Inconsistent definitions within merged group {name!r}.")
+        members = group["_key"].tolist()
+        group_source = source.loc[source["_key"].isin(members)]
+        evidence = group_source.loc[valid_quote.reindex(group_source.index)]
+        n_documents = len(group_source[["filename", "doc_id"]].drop_duplicates())
+        scores = pd.to_numeric(group["prototypicality"], errors="coerce").dropna()
+        if not scores.empty and not scores.between(0, 1).all():
+            raise ValueError(
+                "Nonmissing prototypicality scores must be between 0 and 1."
+            )
+        score_text = (
+            "N/A"
+            if scores.empty
+            else (
+                f"{scores.mean():.2f} ({scores.std(ddof=1):.2f})"
+                if len(scores) > 1
+                else f"{scores.iloc[0]:.2f} (N/A)"
+            )
+        )
+        rows.append(
+            {
+                "Construct": name,
+                "Definition": definitions[0],
+                "Construct found % (N)": percent(len(members), original_constituents),
+                "Document count % (N)": percent(n_documents, total),
+                "Instance Count % (N)": percent(len(evidence), original_instances),
+                "Prototypicality mean (SD)": score_text,
+                "Examples": list(dict.fromkeys(evidence["quote"])),
+                "Constituents found": members,
+            }
+        )
+    columns = [
+        "Construct",
+        "Definition",
+        "Construct found % (N)",
+        "Document count % (N)",
+        "Instance Count % (N)",
+        "Prototypicality mean (SD)",
+        "Examples",
+        "Constituents found",
+    ]
+    summary = pd.DataFrame(rows, columns=columns)
+    context = {
+        "total_documents": total,
+        "total_discovered_constituents": original_constituents,
+        "total_discovered_instances": original_instances,
+        "quote_scope": "all_original_quote_occurrences",
+        "summary_scope": "retained_constituents_with_original_denominators",
+    }
+    quotes.attrs.update(context)
+    summary.attrs.update(context)
+    if output_dir is not None:
+        directory = _prepare_output_dir(output_dir)
+        stamp = _timestamp()
+        _write_table(quotes, directory / f"discovery_quotes_{stamp}", save_format)
+        _write_table(
+            summary, directory / f"discovery_construct_summary_{stamp}", save_format
+        )
+        _save_json(directory / f"discovery_summary_context_{stamp}.json", context)
+        print(
+            f"Saved all original quote occurrences and final construct summary to {directory}"
+        )
+    return quotes, summary
 
 
 # ---------------------------------------------------------------------------
