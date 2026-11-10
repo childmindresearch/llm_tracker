@@ -47,6 +47,8 @@ def compare_presence(
     human_present, llm_present, status (tp/fp/fn/tn), and binary tp/fp/fn/tn
     columns. Pass this grid directly to ``compute_binary_metrics``; do not pass
     it to the span-level summary or codebook optimization functions.
+    rank_constructs_by_percentage(grid) ranks LLM document prevalence using the
+    same converted flags and saves beside the comparison when output is enabled.
 
     master_output_dir (or output_dir) is the parent for a new timestamped
     comparison_short run. New coding results also carry their master directory
@@ -202,3 +204,126 @@ def compare_presence(
         )
         run.finish()
     return grid
+
+
+def rank_constructs_by_percentage(
+    presence_table: pd.DataFrame,
+    *,
+    output_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """Rank constructs by the percentage of compared documents coded by the LLM.
+
+    Args:
+        presence_table: The COMPLETE document-by-construct grid returned by
+            compare_presence(), not a quote table or compute_binary_metrics()
+            summary. Include absence/true-negative rows and all selected docs.
+            The required columns are doc_id, construct and binary llm_present.
+            Duplicate pairs, missing cells and nonbinary flags raise ValueError.
+            A valid reloaded CSV grid is accepted; see output_dir for saving.
+        output_dir: Optional existing comparison run directory or a parent for
+            a new comparison_short output run. By default uses the grid's
+            attrs['output_path'], so no timestamped path needs to be typed when
+            working with compare_presence() results. For a reloaded CSV supply
+            its comparison run directory, since CSV does not retain attrs.
+            If neither path is available, returns the table without saving.
+
+    Returns:
+        Three-column DataFrame: Rank, Construct, % (N). For example,
+        '26.2% (28/107)' means the LLM detected the construct in 28 of the 107
+        compared documents. The denominator includes every compared document,
+        including those where neither coder found anything. Multiple quotes or
+        detections of the same construct in ONE document still count only once.
+        This is LLM prevalence, not human prevalence, quote share or agreement.
+
+        The existing llm_present flags are used exactly as given: the chosen
+        floor/ceiling policy has ALREADY been applied by compare_presence().
+        This function never remaps scores or calls the LLM. Human flags do not
+        affect ranking. Constructs with zero LLM detections are included.
+
+        Sorts by unrounded percentage descending; tied counts are ordered by
+        construct name (case-insensitive, then original spelling). Rank is a
+        sequential row number, so tied percentages have consecutive ranks.
+        There is no Overall row. The input is never modified. Counts and the
+        document denominator are also available in the returned dataframe attrs.
+
+        When saving, writes llm_construct_presence_ranked_<model>_<timestamp>.csv
+        and registers its path/denominator in run metadata. Existing comparison
+        runs reuse their model/timestamp and metadata row. A plain output parent
+        creates a new tracked comparison_short run. Empty input returns/saves
+        a header-only table with a zero-document denominator.
+    """
+    required = {"doc_id", "construct", "llm_present"}
+    missing = required - set(presence_table)
+    if missing:
+        raise ValueError(f"Presence table is missing columns: {sorted(missing)}")
+    grid = presence_table[["doc_id", "construct", "llm_present"]].copy()
+    if grid[["doc_id", "construct"]].isna().any().any():
+        raise ValueError("Document IDs and construct names cannot be missing.")
+    if grid["doc_id"].astype(str).str.strip().eq("").any():
+        raise ValueError("Document IDs cannot be empty.")
+    if any(not isinstance(name, str) or not name.strip() for name in grid["construct"]):
+        raise ValueError("Construct names must be nonempty strings.")
+    if grid.duplicated(["doc_id", "construct"]).any():
+        raise ValueError(
+            "Expected one row per document/construct pair, not repeated quotes."
+        )
+    flags = pd.to_numeric(grid["llm_present"], errors="coerce")
+    if flags.isna().any() or not flags.isin([0, 1]).all():
+        raise ValueError("llm_present must contain complete binary 0/1 flags.")
+    grid["llm_present"] = flags.astype(int)
+    total_documents = int(grid["doc_id"].nunique())
+    if len(grid) != total_documents * grid["construct"].nunique():
+        raise ValueError(
+            "The presence grid is incomplete. Keep absence rows for every document/construct pair."
+        )
+
+    counts = grid.groupby("construct", sort=False)["llm_present"].sum()
+    ranked = pd.DataFrame({"Construct": counts.index, "_count": counts.values})
+    ranked["_name"] = ranked["Construct"].str.casefold()
+    ranked = ranked.sort_values(
+        ["_count", "_name", "Construct"], ascending=[False, True, True], kind="stable"
+    ).reset_index(drop=True)
+    document_counts = dict(zip(ranked["Construct"], map(int, ranked["_count"])))
+    ranked.insert(0, "Rank", range(1, len(ranked) + 1))
+    ranked["% (N)"] = [
+        f"{100 * count / total_documents:.1f}% ({int(count)}/{total_documents})"
+        for count in ranked["_count"]
+    ]
+    ranked = ranked[["Rank", "Construct", "% (N)"]]
+    ranked.attrs.update(
+        total_documents=total_documents,
+        document_counts=document_counts,
+        percentage_definition="LLM-positive documents / all compared documents",
+        rounding_method=presence_table.attrs.get("rounding_method", "unavailable"),
+        binarize_confidence=presence_table.attrs.get(
+            "binarize_confidence", "unavailable"
+        ),
+    )
+    destination = (
+        output_dir
+        if output_dir is not None
+        else presence_table.attrs.get("output_path")
+    )
+    if destination is not None:
+        run = RunOutput.load(destination)
+        created = run is None
+        if created:
+            source = RunOutput.load(presence_table.attrs.get("output_path"))
+            run = RunOutput.create(
+                destination,
+                "comparison_short",
+                source.record["model"] if source else "unknown",
+                mode="llm_presence_ranking",
+            )
+        path = run.table("llm_construct_presence_ranked", ranked)
+        run.update(
+            ranking_total_documents=total_documents,
+            ranking_construct_count=len(ranked),
+            ranking_measure="LLM-positive documents / all compared documents",
+            ranking_rounding_method=ranked.attrs["rounding_method"],
+            ranking_binarize_confidence=ranked.attrs["binarize_confidence"],
+        )
+        if created:
+            run.finish()
+        ranked.attrs["csv_path"] = str(path)
+    return ranked
