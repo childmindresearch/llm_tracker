@@ -19,7 +19,7 @@ you do not need a local repository before opening them in Colab.
 | [Discovery](tutorials/discovery_tutorial.ipynb) | Discover constructs, merge names, edit/filter groups, reevaluate definitions, export quotes and summaries, and build a codebook | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/discovery_tutorial.ipynb) |
 | [Anonymization](tutorials/anonymization_tutorial.ipynb) | Remove identifying information locally with [anonymize-pii](https://github.com/childmindresearch/anonymize-pii) before sending text to a model | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/anonymization_tutorial.ipynb) |
 | [Embeddings map](tutorials/embeddings_tutorial.ipynb) | Map coded quotes and inspect overlap between constructs | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/embeddings_tutorial.ipynb) |
-| [JEV classification](tutorials/jev_tutorial_v2.ipynb) | Alternative binary and multilabel detection through OpenRouter's alpha Decisions API | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/jev_tutorial_v2.ipynb) |
+| [JEV classification](tutorials/jev_tutorial_v2.ipynb) | Alternative binary and multilabel detection through OpenRouter's alpha Decisions API | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/jev_tutorial.ipynb) |
 
 The earlier [JEV sentence-to-transcript walkthrough](tutorials/jev_tutorial_v1.ipynb)
 is also available ([Open in Colab](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/jev_tutorial_v1.ipynb)). Each supplementary tutorial explains its own dependencies and
@@ -411,11 +411,11 @@ before merging them into the full codebook.
 ## Discovery
 
 The notebook is called `discovery_tutorial.ipynb`; the current Python module is
-**`llm_tracker.discovery_v2`**. Discovery accepts a framework rather than a fixed
+**`llm_tracker.discovery`**. Discovery accepts a framework rather than a fixed
 construct list:
 
 ```python
-from llm_tracker.discovery_v2 import (
+from llm_tracker.discovery import (
     LLMTrackerDiscoverer, merge_constructs, build_discovery_tables, build_codebook,
 )
 

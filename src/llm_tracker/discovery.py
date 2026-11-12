@@ -122,6 +122,8 @@ grouped names)
 for this canonical construct; lower = related but less obvious)
 
 Guidance:
+- Look through the entire list before deciding on the merged_construct names. \
+Dont let it be biased only by the first constructs you see.
 - Group on meaning, using the descriptions as well as the names.
 - A construct does NOT have to be merged with anything. If it stands on its \
 own, return it as a canonical construct with an empty "constituents" list and \
@@ -1566,6 +1568,67 @@ def filter_merged_constructs(
         output_dir=output_dir,
         save_format=save_format,
     )
+
+
+def filter_merged_dataframe(
+    table: pd.DataFrame,
+    *,
+    min_document_count: int | None = 2,
+    min_prototypicality: float | None = 0.3,
+    output_dir: Path | str | None = None,
+    save_format: str = "csv",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a raw merge table into retained and removed constituent rows.
+
+    Args:
+        table: Raw merge table returned by merge_constructs(), not its formatted
+            display. Each row represents one discovered construct within a group.
+        min_document_count: Inclusive minimum number of distinct documents, not
+            a percentage. Defaults to 2; None disables this threshold.
+        min_prototypicality: Inclusive minimum score from 0 to 1. Defaults to 0.3;
+            None disables this threshold. Missing scores fail an enabled cutoff.
+        output_dir: If supplied, save both tables directly in this directory as
+            filtered_merge_table_<timestamp> and removed_merge_table_<timestamp>.
+        save_format: csv, json, or both. JSON preserves list-valued columns.
+
+    Returns:
+        (filtered_table, removed_table). A row is retained only if it meets both
+        enabled thresholds. Original columns, indices, row order, counts, quotes,
+        and scores are preserved; the input is not modified. Retained-table attrs
+        record removals for later editing/reevaluation. The successful-document
+        denominator is unchanged. No LLM calls are made.
+
+    Raises:
+        ValueError: If required merge columns or threshold values are invalid.
+    """
+    required = set(MERGED_COLUMNS) - {"document_frequency_percent", "total_documents"}
+    if required - set(table):
+        raise ValueError(
+            f"Merge table missing columns: {sorted(required - set(table))}"
+        )
+    _, validated = filter_merged_constructs(
+        table,
+        min_document_count=min_document_count,
+        min_prototypicality=min_prototypicality,
+    )
+    keep = table["construct_found"].map(normalize_name).isin(
+        validated["construct_found"].map(normalize_name)
+    )
+    filtered_table = table.loc[keep].copy(deep=True)
+    filtered_table.attrs = deepcopy(validated.attrs)
+    removed_table = table.loc[~keep].copy(deep=True)
+    removed_table.attrs = deepcopy(table.attrs)
+    if output_dir is not None:
+        out_dir = _prepare_output_dir(output_dir)
+        stamp = _timestamp()
+        _write_table(
+            filtered_table, out_dir / f"filtered_merge_table_{stamp}", save_format
+        )
+        _write_table(
+            removed_table, out_dir / f"removed_merge_table_{stamp}", save_format
+        )
+        print(f"Saved retained and removed merge tables to {out_dir}")
+    return filtered_table, removed_table
 
 
 REEVALUATE_PROMPT = """You are revising a qualitative codebook under {framework}.
