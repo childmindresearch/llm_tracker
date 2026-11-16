@@ -167,7 +167,7 @@ def test_examples_are_newline_joined_only_in_csv(tmp_path):
     assert table.loc[0, "Examples"] == ["first, example", "second example"]
 
 
-def test_codebook_text_columns_use_newlines_and_roundtrip():
+def test_codebook_text_columns_use_newlines():
     codebook = {
         "codebook": {
             "Group": {
@@ -181,7 +181,16 @@ def test_codebook_text_columns_use_newlines_and_roundtrip():
     text_frame = codebook_to_frame(codebook, as_text=True)
     assert text_frame.loc[0, "examples"] == "first example\nsecond example"
     assert text_frame.loc[0, "counter_examples"] == "not an example\nanother one"
-    assert frame_to_codebook(text_frame)["codebook"]["Group"]["examples"] == [
-        "first example",
-        "second example",
-    ]
+
+
+def test_frame_to_codebook_does_not_split_embedded_newlines():
+    frame = pd.DataFrame(
+        {
+            "construct": ["Group"],
+            "definition": ["A definition."],
+            "examples": ["first line\ncontinues;another example"],
+        }
+    )
+
+    examples = frame_to_codebook(frame)["codebook"]["Group"]["examples"]
+    assert examples == ["first line\ncontinues", "another example"]

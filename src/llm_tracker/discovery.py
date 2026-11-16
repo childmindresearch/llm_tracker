@@ -2169,8 +2169,8 @@ def codebook_to_frame(codebook: dict, as_text: bool = False) -> pd.DataFrame:
     ----
         codebook: A codebook envelope.
         as_text: If True, join the list columns with newlines for a more
-            readable display. Editing text cells is then delimiter-sensitive,
-            so prefer the default when you intend to make changes.
+            readable display. This display format is not intended for editing;
+            use the default list columns when you intend to make changes.
 
     Returns:
     -------
@@ -2209,8 +2209,8 @@ def frame_to_codebook(
     ----
         df: DataFrame from ``codebook_to_frame``, possibly edited. The
             ``examples`` and ``counter_examples`` cells may hold lists or
-            delimiter-separated strings, so frames built with ``as_text=True``
-            still convert back. Use lists when quotes may contain newlines.
+            semicolon-separated strings. Use lists when quotes may contain
+            semicolons or newlines.
         metadata: Optional metadata block. Defaults are used if omitted.
         output_path: Optional codebook JSON path. save_codebook adds a UTC
             timestamp to the filename and prints the actual saved path.
@@ -2230,16 +2230,12 @@ def frame_to_codebook(
         raise ValueError(f"DataFrame is missing columns: {sorted(missing)}")
 
     def _as_list(value: object) -> list[str]:
-        """Accept a list of quotes, delimiter-separated text, or nothing."""
+        """Accept a list of quotes, semicolon-separated text, or nothing."""
         if value is None or isinstance(value, float) and pd.isna(value):
             return []
         if isinstance(value, (list, tuple)):
             return [str(item).strip() for item in value if str(item).strip()]
-        text = str(value)
-        separator = (
-            ";\n" if ";\n" in text else "\n" if "\n" in text else ";"
-        )
-        return [part.strip() for part in text.split(separator) if part.strip()]
+        return [part.strip() for part in str(value).split(";") if part.strip()]
 
     codebook = {
         str(row.construct).strip(): {
