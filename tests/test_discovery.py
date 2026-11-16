@@ -6,7 +6,10 @@ import pandas as pd
 import pytest
 from llm_tracker.discovery import (
     MERGED_COLUMNS,
+    _write_table,
     apply_merge_edits,
+    codebook_to_frame,
+    frame_to_codebook,
     filter_merged_dataframe,
 )
 
@@ -140,3 +143,45 @@ def test_invalid_thresholds_raise(merge_table, kwargs):
 def test_missing_columns_raise(merge_table):
     with pytest.raises(ValueError, match="missing columns"):
         filter_merged_dataframe(merge_table.drop(columns="prototypicality"))
+
+
+def test_examples_are_newline_joined_only_in_csv(tmp_path):
+    table = pd.DataFrame(
+        {
+            "Examples": [["first, example", "second example"]],
+            "counter_examples": [["not an example", "another one"]],
+            "constituents": [["one", "two"]],
+        }
+    )
+
+    _write_table(table, tmp_path / "examples", "both")
+
+    csv = pd.read_csv(tmp_path / "examples.csv")
+    assert csv.loc[0, "Examples"] == "first, example\nsecond example"
+    assert csv.loc[0, "counter_examples"] == "not an example\nanother one"
+    assert csv.loc[0, "constituents"] == "['one', 'two']"
+
+    json = pd.read_json(tmp_path / "examples.json")
+    assert json.loc[0, "Examples"] == ["first, example", "second example"]
+    assert json.loc[0, "counter_examples"] == ["not an example", "another one"]
+    assert table.loc[0, "Examples"] == ["first, example", "second example"]
+
+
+def test_codebook_text_columns_use_newlines_and_roundtrip():
+    codebook = {
+        "codebook": {
+            "Group": {
+                "definition": "A definition.",
+                "examples": ["first example", "second example"],
+                "counter_examples": ["not an example", "another one"],
+            }
+        }
+    }
+
+    text_frame = codebook_to_frame(codebook, as_text=True)
+    assert text_frame.loc[0, "examples"] == "first example\nsecond example"
+    assert text_frame.loc[0, "counter_examples"] == "not an example\nanother one"
+    assert frame_to_codebook(text_frame)["codebook"]["Group"]["examples"] == [
+        "first example",
+        "second example",
+    ]

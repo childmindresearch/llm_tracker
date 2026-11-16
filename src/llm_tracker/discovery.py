@@ -610,6 +610,8 @@ def _frequency(table: pd.DataFrame, total_documents: int | None) -> pd.DataFrame
 def _write_table(df: pd.DataFrame, stem: Path, save_format: str) -> None:
     """Write a DataFrame as CSV, JSON, or both.
 
+    List-valued examples columns are newline-joined in CSV for readability;
+    JSON retains the original lists.
     Raises:
     ------
         ValueError: If save_format is not csv, json, or both.
@@ -620,7 +622,17 @@ def _write_table(df: pd.DataFrame, stem: Path, save_format: str) -> None:
             f"save_format must be 'csv', 'json', or 'both', got {save_format!r}."
         )
     if save_format in {"csv", "both"}:
-        df.to_csv(stem.with_suffix(".csv"), index=False)
+            csv_df = df.copy()
+            for column in csv_df.columns:
+                if str(column).casefold() in {"examples", "counter_examples"}:
+                    csv_df[column] = csv_df[column].map(
+                        lambda value: (
+                            "\n".join(str(example) for example in value)
+                            if isinstance(value, list)
+                            else value
+                        )
+                    )
+            csv_df.to_csv(stem.with_suffix(".csv"), index=False)
     if save_format in {"json", "both"}:
         df.to_json(stem.with_suffix(".json"), orient="records", indent=2)
 
@@ -1882,7 +1894,8 @@ def build_discovery_tables(
             discovery_construct_summary CSV/JSON files, plus a context JSON
             recording their original denominators. No API calls are made.
         save_format: csv, json, or both. JSON preserves Examples and Constituents
-            found as lists; their CSV cells are list representations.
+            found as lists. Examples are newline-separated in CSV; Constituents
+            found remains a list representation.
 
     Returns:
         (all_quotes, construct_summary). all_quotes has one row per nonempty quote
@@ -2155,7 +2168,7 @@ def codebook_to_frame(codebook: dict, as_text: bool = False) -> pd.DataFrame:
     Args:
     ----
         codebook: A codebook envelope.
-        as_text: If True, join the list columns with ``";\\n"`` for a more
+        as_text: If True, join the list columns with newlines for a more
             readable display. Editing text cells is then delimiter-sensitive,
             so prefer the default when you intend to make changes.
 
@@ -2174,9 +2187,9 @@ def codebook_to_frame(codebook: dict, as_text: bool = False) -> pd.DataFrame:
             {
                 "construct": construct,
                 "definition": entry.get("definition", ""),
-                "examples": ";\n".join(examples) if as_text else examples,
+                "examples": "\n".join(examples) if as_text else examples,
                 "counter_examples": (
-                    ";\n".join(counter_examples) if as_text else counter_examples
+                    "\n".join(counter_examples) if as_text else counter_examples
                 ),
             }
         )
@@ -2195,9 +2208,9 @@ def frame_to_codebook(
     Args:
     ----
         df: DataFrame from ``codebook_to_frame``, possibly edited. The
-            ``examples`` and ``counter_examples`` cells may hold either lists or
-            ``";"``-joined strings, so frames built with ``as_text=True`` still
-            convert back.
+            ``examples`` and ``counter_examples`` cells may hold lists or
+            delimiter-separated strings, so frames built with ``as_text=True``
+            still convert back. Use lists when quotes may contain newlines.
         metadata: Optional metadata block. Defaults are used if omitted.
         output_path: Optional codebook JSON path. save_codebook adds a UTC
             timestamp to the filename and prints the actual saved path.
@@ -2217,12 +2230,16 @@ def frame_to_codebook(
         raise ValueError(f"DataFrame is missing columns: {sorted(missing)}")
 
     def _as_list(value: object) -> list[str]:
-        """Accept a list of quotes, or a ';'-joined string, or nothing."""
+        """Accept a list of quotes, delimiter-separated text, or nothing."""
         if value is None or isinstance(value, float) and pd.isna(value):
             return []
         if isinstance(value, (list, tuple)):
             return [str(item).strip() for item in value if str(item).strip()]
-        return [part.strip() for part in str(value).split(";") if part.strip()]
+        text = str(value)
+        separator = (
+            ";\n" if ";\n" in text else "\n" if "\n" in text else ";"
+        )
+        return [part.strip() for part in text.split(separator) if part.strip()]
 
     codebook = {
         str(row.construct).strip(): {
