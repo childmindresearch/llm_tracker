@@ -9,6 +9,7 @@ from llm_tracker.file_handlers import (
     FileLoadError,
     create_output_directory,
     get_document_files,
+    import_codebook,
     load_codebook,
     load_document,
     load_error_records,
@@ -24,6 +25,110 @@ from llm_tracker.models import (
     ConstructInstance,
     ErrorRecord,
 )
+
+
+def test_import_text_codebook_preserves_continued_groups(tmp_path: Path) -> None:
+    path = tmp_path / "codebook.txt"
+    path.write_text(
+        "construct name: definition. Examples. (without bullet points)\n"
+        "Calmness and contentment: Calmness: feeling at ease. Examples:\n"
+        "Contentment: feeling satisfied. Examples: I feel calm; I am satisfied\n"
+        "Connection: Feeling close to others. Examples: we talk; I feel heard"
+        ". Examples:\n"
+        "Worry: Anticipating difficulties. Examples:\n",
+        encoding="utf-8",
+    )
+
+    converted = import_codebook(path)
+
+    assert list(converted["codebook"]) == [
+        "Calmness and contentment", "Connection", "Worry"
+    ]
+    assert converted["codebook"]["Calmness and contentment"] == {
+        "definition": (
+            "Calmness: feeling at ease. Contentment: feeling satisfied."
+        ),
+        "examples": ["I feel calm", "I am satisfied"],
+        "counter_examples": [],
+    }
+    assert converted["codebook"]["Connection"]["examples"] == [
+        "we talk", "I feel heard."
+    ]
+    assert converted["codebook"]["Worry"]["examples"] == []
+
+
+@pytest.mark.parametrize("suffix,separator", [(".csv", ","), (".tsv", "\t")])
+def test_import_tabular_codebook_custom_columns(
+    tmp_path: Path, suffix: str, separator: str
+) -> None:
+    path = tmp_path / f"codebook{suffix}"
+    pd.DataFrame(
+        [{"Name": "Worry, fear", "Meaning": "NA", "Quotes": "a thought; a feeling"}]
+    ).to_csv(path, sep=separator, index=False)
+
+    converted = import_codebook(
+        path, construct_column="Name", definition_column="Meaning",
+        examples_column="Quotes", metadata={"name": "Study"},
+    )
+
+    assert converted["metadata"] == {"name": "Study"}
+    assert converted["codebook"]["Worry, fear"]["definition"] == "NA"
+    assert converted["codebook"]["Worry, fear"]["examples"] == [
+        "a thought", "a feeling"
+    ]
+
+
+def test_import_dataframe_preserves_list_examples_and_missing_values() -> None:
+    frame = pd.DataFrame(
+        {
+            "construct": ["Calmness", "Worry"],
+            "definition": ["Feeling at ease.", "Anticipating difficulties."],
+            "examples": [["A pause; then relief\nat last"], pd.NA],
+            "counter_examples": [None, ["I feel calm"]],
+        }
+    )
+    original = frame.copy(deep=True)
+
+    converted = import_codebook(frame)
+
+    assert converted["codebook"]["Calmness"]["examples"] == [
+        "A pause; then relief\nat last"
+    ]
+    assert converted["codebook"]["Worry"]["examples"] == []
+    assert converted["codebook"]["Worry"]["counter_examples"] == ["I feel calm"]
+    pd.testing.assert_frame_equal(frame, original)
+    json.dumps(converted)
+
+
+@pytest.mark.parametrize(
+    "rows,message",
+    [
+        ([], "no constructs"),
+        ([{"construct": "Worry"}], "unique columns"),
+        ([{"construct": " ", "definition": "A definition"}], "invalid construct"),
+        ([{"construct": "Worry", "definition": None}], "invalid definition"),
+        (
+            [
+                {"construct": "Worry", "definition": "First"},
+                {"construct": " Worry ", "definition": "Second"},
+            ],
+            "Duplicate codebook constructs",
+        ),
+    ],
+)
+def test_import_codebook_rejects_invalid_rows(rows: list, message: str) -> None:
+    frame = pd.DataFrame(rows, columns=["construct", "definition"]) if not rows else (
+        pd.DataFrame(rows)
+    )
+    with pytest.raises(FileLoadError, match=message):
+        import_codebook(frame)
+
+
+def test_import_text_codebook_rejects_unstructured_lines(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.txt"
+    path.write_text("A heading without a construct separator", encoding="utf-8")
+    with pytest.raises(FileLoadError, match="line 1"):
+        import_codebook(path)
 
 
 def test_load_codebook_reads_json(tmp_path: Path) -> None:
