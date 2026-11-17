@@ -11,6 +11,7 @@ from llm_tracker.discovery import (
     codebook_to_frame,
     frame_to_codebook,
     filter_merged_dataframe,
+    format_merged_constructs,
 )
 
 
@@ -194,3 +195,20 @@ def test_frame_to_codebook_does_not_split_embedded_newlines():
 
     examples = frame_to_codebook(frame)["codebook"]["Group"]["examples"]
     assert examples == ["first line\ncontinues", "another example"]
+
+
+def test_merged_display_uses_newlines_and_omits_frequency_denominator(merge_table):
+    row = merge_table.loc[[8]].copy(deep=True)
+    row.loc[8, "document_count"] = 2
+    row.loc[8, "total_documents"] = 18
+    row.loc[8, "document_frequency_percent"] = 200 / 18
+    row.at[8, "quotes"] = ["'I always fail'", "the thought 'I always fail'"]
+    original = deepcopy(row)
+
+    formatted = format_merged_constructs(row)
+
+    assert formatted.loc[8, "document_frequency"] == "11.1%"
+    assert formatted.loc[8, "quotes"] == (
+        "'I always fail'\nthe thought 'I always fail'"
+    )
+    pd.testing.assert_frame_equal(row, original)

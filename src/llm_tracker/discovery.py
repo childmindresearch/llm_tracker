@@ -1828,11 +1828,10 @@ def format_merged_constructs(
     Returns:
     -------
         A display DataFrame whose ``quotes`` column holds up to ``n_quotes``
-        quotes joined by ``";\\n"``. Adds document_frequency formatted as
-        '25.0% (25/100 documents)'. Uses the actual document_count, not a count
-        inferred from a rounded percentage. The denominator is all successfully processed documents, including
-        empty discoveries; unavailable percentages display as N/A. Raw numeric
-        document_frequency_percent and total_documents columns remain unchanged.
+        quotes joined by newlines. Adds document_frequency formatted as a
+        percentage only, such as ``25.0%``. Unavailable percentages display as
+        N/A. Raw numeric document_frequency_percent and total_documents columns
+        remain unchanged.
 
     """
     if table.empty:
@@ -1841,19 +1840,11 @@ def format_merged_constructs(
     rng = random.Random(seed)
     display = table.copy()
     display["document_frequency"] = [
-        (
-            f"{percent:.1f}% ({int(count)}/{int(total)} documents)"
-            if pd.notna(percent) and pd.notna(total)
-            else "N/A"
-        )
-        for percent, count, total in zip(
-            display["document_frequency_percent"],
-            display["document_count"],
-            display["total_documents"],
-        )
+        f"{percent:.1f}%" if pd.notna(percent) else "N/A"
+        for percent in display["document_frequency_percent"]
     ]
     display["quotes"] = [
-        ";\n".join(
+        "\n".join(
             quotes if len(quotes) <= n_quotes else rng.sample(list(quotes), n_quotes)
         )
         for quotes in display["quotes"]
