@@ -7,6 +7,14 @@ for finding constructs before you have a fixed codebook.
 **Beta:** the package is still being tested. Review extracted quotes and validate
 performance against human coding for your dataset.
 
+## Citation
+
+Please cite this if you use the package:
+
+Low, D., Mair, P., Nock, M., & Ghosh, S. (2026). Text Psychometrics: Assessing
+Psychological Constructs in Text Using Natural Language Processing. PLOS Digital Health. [PDF](https://journals.plos.org/digitalhealth/article?id=10.1371/journal.pdig.0001757)
+
+
 ## Tutorials
 
 Start with the main tutorial for coding and comparison, or discovery for building
@@ -492,13 +500,5 @@ Before sending identifying text to a model, see the
 [anonymization tutorial](tutorials/anonymization_tutorial.ipynb). Automated
 anonymization still needs human review.
 
-## Citation and funding
-
-Please cite this if you use the package:
-
-Low, D., Mair, P., Nock, M., & Ghosh, S. (in press). Text Psychometrics: Assessing
-Psychological Constructs in Text Using Natural Language Processing. PLOS Digital Health.
-
-Preprint: <https://osf.io/preprints/psyarxiv/9rdux_v5>
-
+# Funding
 Funded by the Mind and Life Institute Varela Grant.
