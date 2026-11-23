@@ -2,10 +2,10 @@
 
 import csv
 import json
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from llm_tracker.outputs import RunOutput, document_stem, redact, slug
 
 import pandas as pd
 
@@ -15,6 +15,7 @@ from llm_tracker.models import (
     ConstructInstance,
     ErrorRecord,
 )
+from llm_tracker.outputs import RunOutput, document_stem, redact, slug
 
 TEXT_COLUMN_PRIORITY = ["text", "content", "transcript", "response", "answer"]
 SPEAKER_COLUMN_KEYWORDS = ["speaker", "participant", "interviewer", "name"]
@@ -116,6 +117,149 @@ def load_codebook(codebook_path: Path | str) -> dict:
         raise FileLoadError(f"Could not read codebook file: {e}") from e
 
     return ensure_codebook_envelope(data)
+
+
+def _read_text_codebook(path: Path) -> pd.DataFrame:
+    """Read Construct: definition. Examples: first; second text records."""
+    records: list[str] = []
+    marker = re.compile(r"\bExamples\s*:", re.IGNORECASE)
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8-sig").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.casefold() == (
+            "construct name: definition. examples. (without bullet points)"
+        ):
+            continue
+        previous_parts = marker.split(records[-1]) if records else []
+        pending_examples = len(previous_parts) > 1 and not any(
+            part.strip() for part in previous_parts[1:]
+        )
+        if pending_examples:
+            records[-1] = marker.sub("", records[-1]).rstrip() + " " + line
+        elif ":" in line:
+            records.append(line)
+        else:
+            raise FileLoadError(
+                f"{path.name}, line {line_number}: expected "
+                "'Construct: definition. Examples: first; second'."
+            )
+
+    rows = []
+    for record in records:
+        construct, _, body = record.partition(":")
+        # Some exports repeat an empty Examples: label after the examples.
+        body = re.sub(r"(?:\s*Examples\s*:\s*)+$", "", body, flags=re.IGNORECASE)
+        parts = marker.split(body, maxsplit=1)
+        rows.append(
+            {
+                "construct": construct.strip(),
+                "definition": parts[0].strip(),
+                "examples": parts[1].strip() if len(parts) == 2 else "",
+            }
+        )
+    return pd.DataFrame(rows, columns=["construct", "definition", "examples"])
+
+
+def import_codebook(
+    source: Path | str | pd.DataFrame,
+    *,
+    construct_column: str = "construct",
+    definition_column: str = "definition",
+    examples_column: str = "examples",
+    metadata: dict | None = None,
+) -> dict:
+    """Convert a simple TXT, CSV, TSV, or DataFrame codebook to an envelope.
+
+    TXT records use ``Construct: definition. Examples: first; second``, one
+    construct per line. A line ending in an empty ``Examples:`` label continues
+    into the next line, retaining both definitions under the first construct.
+    The optional instructional header from this format is ignored.
+
+    Tables require construct and definition columns; examples are optional.
+    Customize column names with the keyword arguments. Examples may be lists
+    or semicolon-separated text; use lists when an example contains semicolons.
+    An optional ``counter_examples`` column follows the same convention.
+    Original files and DataFrames are never modified.
+
+    Args:
+    ----
+        source: TXT/CSV/TSV path or a DataFrame.
+        construct_column: Table column holding construct names.
+        definition_column: Table column holding definitions.
+        examples_column: Optional table column holding examples.
+        metadata: Optional codebook metadata; defaults are supplied if omitted.
+
+    Returns:
+    -------
+        A JSON-serializable ``metadata`` / ``codebook`` envelope. Use
+        ``discovery.save_codebook`` to save it to a timestamped JSON file.
+
+    Raises:
+    ------
+        FileLoadError: If input is unreadable, malformed, empty, or contains
+            missing definitions or duplicate construct names.
+
+    """
+    from llm_tracker.discovery import frame_to_codebook
+
+    if isinstance(source, pd.DataFrame):
+        frame = source.copy()
+    else:
+        path = Path(source).expanduser()
+        try:
+            if path.suffix.lower() == ".txt":
+                frame = _read_text_codebook(path)
+                construct_column, definition_column, examples_column = (
+                    "construct", "definition", "examples"
+                )
+            elif path.suffix.lower() in {".csv", ".tsv"}:
+                frame = pd.read_csv(
+                    path, sep="\t" if path.suffix.lower() == ".tsv" else ",",
+                    dtype=str, keep_default_na=False, encoding="utf-8-sig",
+                )
+            else:
+                raise FileLoadError("Simple codebooks must be TXT, CSV, or TSV files.")
+        except (
+            OSError, UnicodeError, pd.errors.ParserError, pd.errors.EmptyDataError
+        ) as e:
+            raise FileLoadError(f"Could not read codebook {path}: {e}") from e
+
+    required = {construct_column, definition_column}
+    if len({construct_column, definition_column, examples_column}) != 3:
+        raise FileLoadError("Construct, definition, and examples columns must differ.")
+    if not frame.columns.is_unique or required - set(frame.columns):
+        raise FileLoadError(
+            f"Codebook needs unique columns including {sorted(required)}."
+        )
+    frame = frame.rename(
+        columns={
+            construct_column: "construct",
+            definition_column: "definition",
+            examples_column: "examples",
+        }
+    )
+    if not frame.columns.is_unique:
+        raise FileLoadError("Column mapping produced duplicate codebook columns.")
+    if frame.empty:
+        raise FileLoadError("Codebook contains no constructs.")
+    for column in ["construct", "definition"]:
+        values = frame[column]
+        if values.isna().any() or not values.map(
+            lambda value: isinstance(value, str) and bool(value.strip())
+        ).all():
+            raise FileLoadError(f"Codebook has missing or invalid {column} values.")
+        frame[column] = values.str.strip()
+    if frame["construct"].duplicated().any():
+        duplicates = frame.loc[frame["construct"].duplicated(), "construct"].tolist()
+        raise FileLoadError(f"Duplicate codebook constructs: {duplicates}")
+    for column in ["examples", "counter_examples"]:
+        if column in frame:
+            frame[column] = frame[column].map(
+                lambda value: value if isinstance(value, list | tuple)
+                else None if pd.isna(value) else value
+            )
+    return frame_to_codebook(frame, metadata=metadata)
 
 
 def load_txt_document(file_path: Path) -> str:

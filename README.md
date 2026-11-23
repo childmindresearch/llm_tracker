@@ -148,6 +148,27 @@ Older flat construct dictionaries are also accepted. See the
 [practice codebook](sample_data/tutorial_practice/codebook.json) and
 [other codebooks](codebooks).
 
+For simple CSV/TSV files or pandas DataFrames, use `import_codebook` with
+`construct`, `definition`, and optional `examples` columns. Column names can be
+specified explicitly. TXT files can instead use one
+`Construct: definition. Examples: first; second` record per line. A line ending
+in an empty `Examples:` label continues into the next line under the same
+construct. Review continued entries before coding.
+
+```python
+from llm_tracker.file_handlers import import_codebook
+from llm_tracker.discovery import save_codebook
+
+codebook = import_codebook("my_codebook.txt")  # Also CSV, TSV, or a DataFrame.
+codebook_path = save_codebook(codebook, "research_results/codebooks/converted.json")
+```
+
+Conversion makes no LLM calls and leaves the input unchanged. Text examples are
+semicolon-separated; use list-valued DataFrame cells to preserve semicolons
+inside an example. Missing definitions and duplicate construct names are
+reported as errors. The main tutorial demonstrates conversion alongside local,
+Colab-upload, and Google Drive input options.
+
 ## Basic LLM coding
 
 Replace the model ID, file paths, and column names with your study's values.
