@@ -17,13 +17,15 @@ Psychological Constructs in Text Using Natural Language Processing. PLOS Digital
 
 ## Tutorials
 
-Start with the main tutorial for coding and comparison, or discovery for building
-a codebook. Both setup cells download the package and practice files automatically;
-you do not need a local repository before opening them in Colab.
+Start with the main tutorial for coding and comparison, text descriptives for a
+local corpus overview, or discovery for building a codebook. The setup cells
+download the package and practice files automatically; you do not need a local
+repository before opening them in Colab.
 
 | Tutorial | What it covers | Open in Colab |
 | --- | --- | --- |
-| [Main tutorial](tutorials/tutorial.ipynb) | Text descriptives, coding, long/wide human data, quote or presence comparison, summary tables, and construct rankings | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/tutorial.ipynb) |
+| [Main tutorial](tutorials/tutorial.ipynb) | Coding, long/wide human data, quote or presence comparison, summary tables, and construct rankings | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/tutorial.ipynb) |
+| [Text descriptives](tutorials/text_descriptives_tutorial.ipynb) | Summarize document length, vocabulary, readability, and sentence patterns locally, without LLM calls | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/text_descriptives_tutorial.ipynb) |
 | [Discovery](tutorials/discovery_tutorial.ipynb) | Discover constructs, merge names, edit/filter groups, reevaluate definitions, export quotes and summaries, and build a codebook | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/discovery_tutorial.ipynb) |
 | [Anonymization](tutorials/anonymization_tutorial.ipynb) | Remove identifying information locally with [anonymize-pii](https://github.com/childmindresearch/anonymize-pii) before sending text to a model | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/anonymization_tutorial.ipynb) |
 | [Embeddings map](tutorials/embeddings_tutorial.ipynb) | Map coded quotes and inspect overlap between constructs | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/childmindresearch/llm_tracker/blob/main/tutorials/embeddings_tutorial.ipynb) |
