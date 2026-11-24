@@ -47,6 +47,48 @@ jobs:
           --log-level=DEBUG
           --verbose
 
+      - name: Test installed distribution outside the repository
+        run: |
+          poetry build --format wheel
+          python -m venv "$RUNNER_TEMP/llm-tracker-install"
+          smoke_python="$RUNNER_TEMP/llm-tracker-install/bin/python"
+          "$smoke_python" -m pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$smoke_python" -I - <<'PY'
+          import importlib.util
+          from llm_tracker import AnalyzerConfig, LLMTrackerAnalyzer
+          from llm_tracker.datasets import copy_demo_data
+
+          assert importlib.util.find_spec("spacy") is None
+          assert importlib.util.find_spec("textdescriptives") is None
+          sample = copy_demo_data("tutorial_data")
+          assert (sample / "documents.csv").is_file()
+          assert (sample / "codebook.json").is_file()
+          assert (sample / "synthetic_human_coding.csv").is_file()
+          assert (sample / "discovery_threshold_demo.csv").is_file()
+          assert copy_demo_data("tutorial_data") == sample
+          PY
+          for wheel in "$GITHUB_WORKSPACE"/dist/*.whl; do
+            "$smoke_python" -m pip install "${wheel}[descriptives]"
+          done
+          "$smoke_python" -m spacy download en_core_web_sm
+          "$smoke_python" -I - <<'PY'
+          import pandas as pd
+          from llm_tracker.corpus_summary import summarize_corpus
+
+          texts = pd.read_csv("tutorial_data/documents.csv")["text"].tolist()
+          summary, raw = summarize_corpus(
+              texts,
+              spacy_model="en_core_web_sm",
+              include_readability=True,
+              include_sentence_complexity=True,
+          )
+          assert len(raw) == len(texts)
+          assert {"Metric", "Value"} == set(summary.columns)
+          assert {"n_tokens", "flesch_reading_ease", "mean_tree_depth"} <= set(raw.columns)
+          PY
+          "$smoke_python" -m pip check
+
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7

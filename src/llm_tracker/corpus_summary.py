@@ -37,8 +37,6 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import spacy
-import textdescriptives as td
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -184,6 +182,20 @@ def summarize_corpus(
         summary : pd.DataFrame with columns ['Metric', 'Value']
         raw     : pd.DataFrame with per-document metrics
     """
+    try:
+        import spacy
+        import textdescriptives as td
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"spacy", "textdescriptives"}:
+            raise
+        raise ImportError(
+            "Text descriptives requires the 'descriptives' extra. Install with "
+            '`pip install "llm-tracker[descriptives] @ '
+            "https://github.com/childmindresearch/llm_tracker/"
+            'archive/refs/heads/main.zip"`'
+            ", then run `python -m spacy download en_core_web_sm` and pass "
+            'spacy_model="en_core_web_sm".'
+        ) from exc
     # ------------------------------------------------------------------ #
     # 1.  TextDescriptives extraction
     # ------------------------------------------------------------------ #
@@ -221,11 +233,15 @@ def summarize_corpus(
     if include_coherence_sbert:
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
+        except ModuleNotFoundError as exc:
+            if exc.name != "sentence_transformers":
+                raise
             raise ImportError(
                 "sentence-transformers is required for SBERT coherence.\n"
-                "Install with: pip install sentence-transformers"
-            )
+                'Install with: pip install "llm-tracker[embeddings] @ '
+                "https://github.com/childmindresearch/llm_tracker/"
+                'archive/refs/heads/main.zip"'
+            ) from exc
         print(f"Loading SBERT model '{sbert_model_name}'…")
         sbert = SentenceTransformer(sbert_model_name)
         # lightweight spaCy for sentence splitting only

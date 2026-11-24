@@ -57,29 +57,45 @@ other supported any-llm providers. Batch coding currently supports OpenRouter on
 
 ### Run a notebook
 
-Open the main or discovery Colab link above and run its setup cell. The main
-tutorial installs TextDescriptives and an English spaCy model; discovery does not
-need those extras. Setup makes no paid LLM calls. Model requests require your own
-API key and available provider credits.
+Open a Colab link above and run its setup cell. The main and discovery tutorials
+do not install TextDescriptives or spaCy. Only the text descriptives tutorial
+installs those tools and an English language model. Setup makes no paid LLM calls.
+Model requests require your own API key and available provider credits.
+
+The main tutorial's setup is a single command in Colab or local Jupyter:
+
+```python
+%pip install "llm-tracker @ https://github.com/childmindresearch/llm_tracker/archive/refs/heads/main.zip"
+```
+
+Use Python 3.11–3.13. Restart the kernel/session if prompted after installation.
+GitHub installation URLs use upstream `main`. To test an unpublished local
+checkout, use `%pip install "/path/to/llm_tracker"` instead (or
+`%pip install "/path/to/llm_tracker[descriptives]"` for text descriptives).
 
 ### Install locally
 
-For a direct installation, use **Python 3.11 or 3.12**:
+For a direct installation, use **Python 3.11–3.13**:
 
 ```bash
 python -m pip install "https://github.com/childmindresearch/llm_tracker/archive/refs/heads/main.zip"
 ```
 
-This installs the package. To use the bundled practice files locally, download
-the repository or run a tutorial's setup cell.
+The package includes the synthetic coding and discovery practice files. Copy them
+into your working folder without downloading a repository:
 
-**Python 3.13:** the current package dependency file still requires NumPy >=1.26 and <2,
-which prevents a normal installation on Python 3.13. The main and discovery
-notebook setup cells apply a compatibility adjustment to their local/downloaded
-copy. The main setup also chooses a compatible TextDescriptives version. These
-notebook adjustments do not change the repository's dependency file.
+```python
+from llm_tracker.datasets import copy_demo_data
 
-For development with Poetry, from a cloned repository and Python 3.11/3.12:
+sample_dir = copy_demo_data("tutorial_data")
+```
+
+Rerunning leaves identical files untouched. If an existing practice file differs,
+the helper raises an error rather than overwriting your edits; choose another
+destination for a fresh copy. Results should go in a separate working folder,
+such as `research_results/`.
+
+For development with Poetry, from a cloned repository:
 
 ```bash
 git clone https://github.com/childmindresearch/llm_tracker.git
@@ -87,10 +103,28 @@ cd llm_tracker
 poetry install
 ```
 
-For text-descriptive tutorial extras:
+Optional features are available as pip extras:
 
 ```bash
-poetry install --with tutorials
+python -m pip install "llm-tracker[descriptives] @ https://github.com/childmindresearch/llm_tracker/archive/refs/heads/main.zip"
+python -m spacy download en_core_web_sm
+```
+
+Use `spacy_model="en_core_web_sm"` when calling `summarize_corpus` with this model.
+The `descriptives` extra pins TextDescriptives 2.8.2 because 2.8.4 requires
+NumPy <2, which has no Python 3.13 wheels. The extra supports NumPy 2 and spaCy 3.8.
+Model downloads are explicit; importing the package does not download a model.
+
+For sentence-transformer examples or optional SBERT coherence, install
+`llm-tracker[embeddings]` using the same direct-URL syntax. Coherence requires both
+extras: `llm-tracker[descriptives,embeddings]`. Discovery spreadsheet input and
+styled notebook tables additionally need `openpyxl`, `xlrd`, and `jinja2`, as
+installed by its setup cell.
+
+For development with optional features:
+
+```bash
+poetry install --extras "descriptives embeddings"
 poetry run python -m spacy download en_core_web_sm
 ```
 
@@ -147,7 +181,7 @@ Codebooks use a JSON envelope:
 ```
 
 Older flat construct dictionaries are also accepted. See the
-[practice codebook](sample_data/tutorial_practice/codebook.json) and
+[practice codebook](src/llm_tracker/_demo_data/codebook.json) and
 [other codebooks](codebooks).
 
 For simple CSV/TSV files or pandas DataFrames, use `import_codebook` with
@@ -174,14 +208,16 @@ Colab-upload, and Google Drive input options.
 ## Basic LLM coding
 
 Replace the model ID, file paths, and column names with your study's values.
-Run examples from the repository root when using the bundled practice paths.
+Use `copy_demo_data` to prepare the practice paths in any working folder.
 
 ```python
 from pathlib import Path
 from llm_tracker import AnalyzerConfig, LLMTrackerAnalyzer
+from llm_tracker.datasets import copy_demo_data
 
+sample_dir = copy_demo_data("tutorial_data")
 output_root = Path("research_results")  # Set the parent output folder once.
-codebook_path = Path("sample_data/tutorial_practice/codebook.json")
+codebook_path = sample_dir / "codebook.json"
 config = AnalyzerConfig(
     model_name="YOUR_OPENROUTER_MODEL_ID",
     master_output_dir=output_root,
@@ -191,7 +227,7 @@ config = AnalyzerConfig(
 analyzer = LLMTrackerAnalyzer(config=config)
 
 results_llm, metadata_llm, errors_llm = analyzer.analyze_csv(
-    csv_path="sample_data/tutorial_practice/documents.csv",
+    csv_path=sample_dir / "documents.csv",
     codebook_path=codebook_path,
     text_column="text",
     id_column="document_id",
